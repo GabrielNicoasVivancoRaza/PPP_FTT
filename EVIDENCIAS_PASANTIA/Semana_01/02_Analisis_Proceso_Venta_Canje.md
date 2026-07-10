@@ -81,4 +81,3 @@ Este archivo es la única fuente de verdad de qué boletos existen y a quién pe
 
 El proceso actual de canje depende completamente de la validación manual del staff, sin registro digital ni control de duplicados. Estos hallazgos son el insumo directo para el levantamiento de información del día siguiente y para la definición de requerimientos.
 
-**Observaciones:** Sin observaciones.

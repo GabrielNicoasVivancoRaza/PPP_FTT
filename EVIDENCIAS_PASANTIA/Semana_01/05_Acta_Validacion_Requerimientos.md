@@ -58,8 +58,3 @@ Presentar al tutor empresarial el backlog de requerimientos funcionales, no func
 3. Cualquier requerimiento nuevo que surja durante el desarrollo deberá documentarse y validarse nuevamente con el tutor empresarial.
 
 ---
-
-**Firma Pasante:** ______________________
-**Firma Tutor Empresarial:** ______________________
-
-**Observaciones generales:** Sin observaciones.

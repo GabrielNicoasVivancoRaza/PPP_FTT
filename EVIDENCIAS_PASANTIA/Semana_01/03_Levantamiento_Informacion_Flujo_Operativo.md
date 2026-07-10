@@ -17,6 +17,7 @@ Recolectar la información operativa detallada de cómo se organiza un evento el
 - Entrevista con el tutor empresarial (Miguel Vivanco) sobre la operación de eventos anteriores.
 - Revisión directa del archivo real de datos de venta (`LUMINEERS.csv`).
 - Análisis de la estructura de columnas y volumen de registros del archivo.
+- Ejemplos con otros documentos de como se realizaba el canje
 
 ## 3. Datos recolectados del archivo fuente
 
@@ -71,4 +72,3 @@ Se definió que la operación se organiza por **puntos de venta** (por ejemplo, 
 
 Se cuenta con la información operativa suficiente (estructura de datos, roles, puntos de trabajo y flujo de atención) para pasar a la identificación formal de requerimientos funcionales y no funcionales del sistema.
 
-**Observaciones:** Sin observaciones.

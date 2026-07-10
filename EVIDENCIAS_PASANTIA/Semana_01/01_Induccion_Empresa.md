@@ -16,8 +16,6 @@ Conocer la empresa **FeelTheTickets (FTT)**, su modelo de negocio, la estructura
 
 **FeelTheTickets (FTT)** es una empresa dedicada a la comercialización y gestión de entradas para eventos y conciertos. Además de la venta de boletos, la empresa presta el servicio de **canje de entradas** el día del evento: los asistentes que compraron su boleto de forma anticipada (en línea) deben acercarse a un punto de canje físico para validar su identidad y recibir la entrada/pulsera que les permite el ingreso.
 
-Uno de los eventos gestionados bajo este modelo es el concierto de **Lumineers**, que se utiliza como caso real para el desarrollo del sistema de esta pasantía.
-
 ## 3. Estructura del equipo y roles
 
 Durante la inducción se identificaron los siguientes roles relevantes para el proyecto:
@@ -31,13 +29,13 @@ Durante la inducción se identificaron los siguientes roles relevantes para el p
 ## 4. Procesos internos conocidos
 
 - Proceso de venta de entradas (externo al sistema, a través de plataforma de venta en línea).
-- Proceso de canje de entradas el día del evento (foco de esta pasantía).
+- Proceso de canje de entradas el día del evento .
 - Manejo de puntos de venta/trabajo físicos distribuidos según localidad del evento.
 - Necesidad de trazabilidad de cada canje realizado (control interno y de auditoría).
 
 ## 5. Alcance del proyecto asignado
 
-Se confirma que el proyecto a desarrollar/mantener durante la pasantía es el **Sistema de Canje de Boletos (Canje FTT)**, cuyo objetivo es digitalizar y controlar el proceso de canje que actualmente depende de validación manual, reduciendo errores, evitando duplicados y generando trazabilidad completa de cada entrada canjeada.
+Se confirma que el proyecto a desarrollar/mantener durante la pasantía es el **Sistema de Canje de Boletos**, cuyo objetivo es digitalizar y controlar el proceso de canje que actualmente depende de validación manual y hojas de excel, reduciendo errores, evitando duplicados y generando trazabilidad completa de cada entrada canjeada.
 
 ## 6. Herramientas y tecnología de la empresa
 
@@ -50,4 +48,3 @@ Se confirma que el proyecto a desarrollar/mantener durante la pasantía es el **
 - Se identificaron los dos roles principales que usará el sistema (Jefe/Staff) y sus necesidades distintas.
 - Quedan pendientes para el día siguiente: profundizar en el proceso actual de venta y canje (AS-IS).
 
-**Observaciones:** Sin observaciones.

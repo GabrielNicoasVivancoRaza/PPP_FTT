@@ -1,5 +1,4 @@
 const mongoose = require('mongoose');
-const User = require('../models/User');
 
 let connectionAttempts = 0;
 const maxRetries = 5;
@@ -47,9 +46,6 @@ const connectDB = async () => {
     // Configurar mongoose para mejor performance
     mongoose.set('autoIndex', process.env.NODE_ENV !== 'production'); // Solo crear índices en desarrollo
     mongoose.set('debug', process.env.NODE_ENV === 'development'); // Debug solo en desarrollo
-    
-    // Crear usuario jefe por defecto si no existe
-    await createDefaultAdmin();
 
   } catch (error) {
     console.error('Error connecting to MongoDB:', error);
@@ -64,29 +60,6 @@ const connectDB = async () => {
       console.error('Max connection attempts reached. Please check your MongoDB connection.');
       // No hacer process.exit() para evitar cierres abruptos
     }
-  }
-};
-
-const createDefaultAdmin = async () => {
-  try {
-    const adminExists = await User.findOne({ rol: 'jefe' });
-    
-    if (!adminExists) {
-      const defaultAdmin = new User({
-        nombre: 'Administrador',
-        usuario: 'admin@shakira.com',
-        password: process.env.DEFAULT_PASSWORD,
-        rol: 'jefe',
-        primerAcceso: true
-      });
-
-      await defaultAdmin.save();
-      console.log('Usuario administrador por defecto creado');
-      console.log('Usuario: admin@shakira.com');
-      console.log('Contraseña:', process.env.DEFAULT_PASSWORD);
-    }
-  } catch (error) {
-    console.error('Error creating default admin:', error);
   }
 };
 

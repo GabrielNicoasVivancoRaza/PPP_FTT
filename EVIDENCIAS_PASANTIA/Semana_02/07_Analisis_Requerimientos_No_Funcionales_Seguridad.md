@@ -63,4 +63,3 @@ Definir en detalle los requerimientos no funcionales del sistema, con énfasis e
 
 Se documentaron los mecanismos de seguridad ya implementados en el sistema (JWT, bcrypt, Helmet, rate limiting, CORS, RBAC, auditoría) y se formalizaron como requerimientos no funcionales, además de identificar riesgos a vigilar durante el desarrollo y despliegue.
 
-**Observaciones:** Sin observaciones.

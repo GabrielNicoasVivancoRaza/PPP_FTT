@@ -231,8 +231,7 @@ const getTicketsByPuntoVenta = async (req, res) => {
             { 'Email': searchRegex },
             { 'Ticket ID': searchTerm },
             { 'Transaction ID': searchTerm },
-            { 'Numero de Cedula:': searchRegex },
-            { 'Número de Cédula: ': searchRegex }
+            { 'Numero de Cedula:': searchRegex }
           ]
         });
       }
@@ -413,22 +412,14 @@ const getTicketsForStaff = async (req, res) => {
       activo: true 
     });
 
-    let localidadesAsignadas = [];
-    
-    if (puntoVenta) {
-      // Si encontramos el punto de venta, usar sus localidades
-      localidadesAsignadas = puntoVenta.localidades;
-    } else {
-      // Fallback al mapeo antiguo si no se encuentra el punto de venta
-      const puntoTrabajoLocalidades = {
-        'boletería norte': ['GENERAL', 'PREFERENCIA'],
-        'boletería sur': ['TRIBUNA', 'PALCO'],
-        'centro comercial': ['Las Mujeres Facturan BOX', 'Antología GOLDEN'],
-        'punto central': ['Hips Don\'t Lie PLATINUM', 'SOLTERA FAN ZONE'],
-        'entrada principal': ['GENERAL', 'PREFERENCIA', 'TRIBUNA']
-      };
-      localidadesAsignadas = puntoTrabajoLocalidades[userPuntoTrabajo] || ['GENERAL'];
+    if (!puntoVenta) {
+      return res.status(404).json({
+        success: false,
+        message: `No se encontró un punto de venta activo llamado "${userPuntoTrabajo}". Verifique la configuración del punto de trabajo del usuario.`
+      });
     }
+
+    const localidadesAsignadas = puntoVenta.localidades;
     
     // Crear filtros para las localidades asignadas al punto de trabajo
     const localidadFilters = localidadesAsignadas.map(localidad => ({
@@ -454,8 +445,7 @@ const getTicketsForStaff = async (req, res) => {
           { 'Email': searchRegex },
           { 'Ticket ID': searchTerm },
           { 'Transaction ID': searchTerm },
-          { 'Numero de Cedula:': searchRegex },
-          { 'Número de Cédula: ': searchRegex }
+          { 'Numero de Cedula:': searchRegex }
         ]
       });
     }

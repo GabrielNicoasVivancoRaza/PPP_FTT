@@ -49,7 +49,8 @@ router.get('/stats', auth, authorize('jefe'), getTicketStats);
 router.get('/transaction/:transactionId', auth, authorize('jefe'), getTicketsByTransaction);
 
 // @route   POST /api/tickets/bulk-canje (DEBE IR ANTES DE RUTAS CON :id)
-router.post('/bulk-canje', auth, authorize('jefe', 'staff'), auditLogger('canje_masivo'), bulkCanjeTickets);
+// Solo Jefe: el canje masivo es una operación de supervisión (ver acta de revisión de diseño, Semana 3)
+router.post('/bulk-canje', auth, authorize('jefe'), auditLogger('canje_masivo'), bulkCanjeTickets);
 
 // @route   POST /api/tickets/:id/print
 router.post('/:id/print', auth, authorize('jefe', 'staff'), auditLogger('impresion'), printTicket);

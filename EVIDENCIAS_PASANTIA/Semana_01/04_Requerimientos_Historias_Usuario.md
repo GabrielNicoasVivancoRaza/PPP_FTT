@@ -45,8 +45,6 @@ Traducir los hallazgos de los días anteriores (proceso AS-IS, flujo operativo, 
 
 ## 4. Historias de Usuario
 
-Formato: *Como [rol], quiero [funcionalidad], para [beneficio]*.
-
 ### HU-01 — Inicio de sesión seguro
 **Como** usuario del sistema (Jefe o Staff)
 **Quiero** iniciar sesión con mi usuario y contraseña
@@ -133,4 +131,3 @@ Formato: *Como [rol], quiero [funcionalidad], para [beneficio]*.
 
 Se cuenta con un backlog inicial de requerimientos funcionales, no funcionales e historias de usuario, listo para ser presentado al tutor empresarial el día siguiente para su validación formal.
 
-**Observaciones:** Sin observaciones.

@@ -50,8 +50,3 @@ Cerrar la etapa de análisis de requerimientos, presentando al tutor empresarial
 3. El backlog de requerimientos (funcionales y no funcionales) queda como línea base (*baseline*) para el resto del proyecto.
 
 ---
-
-**Firma Pasante:** ______________________
-**Firma Tutor Empresarial:** ______________________
-
-**Observaciones generales:** Sin observaciones.

@@ -104,5 +104,3 @@ Profundizar el backlog de requerimientos funcionales aprobado en la Semana 1, es
 ## 4. Conclusiones del día
 
 Cada requerimiento funcional cuenta ahora con reglas de negocio explícitas, lo cual permite pasar al análisis de requerimientos no funcionales y de seguridad sin ambigüedades sobre el comportamiento esperado del sistema.
-
-**Observaciones:** Sin observaciones.

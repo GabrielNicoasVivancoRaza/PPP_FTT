@@ -83,4 +83,3 @@ Definir la arquitectura tecnológica de la solución (stack, componentes, justif
 
 Queda definida la arquitectura técnica completa de la solución y su justificación, lista para iniciar el diseño detallado en la Semana 3, así como el plan de despliegue en la nube.
 
-**Observaciones:** Sin observaciones.

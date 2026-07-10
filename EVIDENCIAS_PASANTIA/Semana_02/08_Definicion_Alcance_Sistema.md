@@ -28,7 +28,7 @@ Delimitar formalmente qué incluye y qué NO incluye el sistema a desarrollar, e
 ## 3. Fuera del alcance (Out of Scope)
 
 - **Venta de entradas en línea / pasarela de pagos**: el sistema no vende boletos ni procesa pagos; solo gestiona el canje de boletos ya vendidos por un canal externo.
-- **Gestión de múltiples eventos/colecciones simultáneas**: en la versión actual (v2.0) el sistema trabaja sobre una única colección/evento activo a la vez; no se soporta operar varios eventos en paralelo desde la misma instancia.
+- **Gestión de múltiples eventos/colecciones simultáneas**: en la versión actual el sistema trabaja sobre una única colección/evento activo a la vez; no se soporta operar varios eventos en paralelo desde la misma instancia.
 - **Módulo de cronograma/Schedule**: existía en una versión anterior del proyecto y fue removido explícitamente del alcance por decisión de negocio (simplicidad operativa); no se reincorporará salvo nueva solicitud formal.
 - **Aplicación móvil nativa**: el sistema se entrega como aplicación web responsiva, no como app nativa iOS/Android.
 - **Facturación o control contable**: no se gestionan aspectos financieros/contables del evento, solo el control operativo del canje.
@@ -48,5 +48,3 @@ Delimitar formalmente qué incluye y qué NO incluye el sistema a desarrollar, e
 ## 6. Conclusiones del día
 
 Con el alcance delimitado, quedan claros los límites del sistema frente a procesos que la empresa maneja por fuera (venta, pagos, facturación), lo que permite enfocar la planificación técnica exclusivamente en el proceso de canje.
-
-**Observaciones:** Sin observaciones.

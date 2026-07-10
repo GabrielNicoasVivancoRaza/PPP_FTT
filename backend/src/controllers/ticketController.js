@@ -39,8 +39,7 @@ const getTickets = async (req, res) => {
           { 'Email': searchRegex },
           { 'Ticket ID': trimmedSearch },
           { 'Transaction ID': trimmedSearch },
-          { 'Numero de Cedula:': searchRegex },
-          { 'Número de Cédula: ': searchRegex }
+          { 'Numero de Cedula:': searchRegex }
         ]
       });
     }
