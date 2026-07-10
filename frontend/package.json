@@ -1,0 +1,49 @@
+{
+  "name": "canje-ftt-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "axios": "^1.11.0",
+    "bootstrap": "^5.3.0",
+    "chart.js": "^4.4.0",
+    "date-fns": "^2.30.0",
+    "react": "^18.2.0",
+    "react-bootstrap": "^2.8.0",
+    "react-chartjs-2": "^5.2.0",
+    "react-datepicker": "^4.16.0",
+    "react-dom": "^18.2.0",
+    "react-hook-form": "^7.45.4",
+    "react-query": "^3.39.3",
+    "react-router-dom": "^6.15.0",
+    "socket.io-client": "^4.8.1",
+    "sweetalert2": "^11.7.0",
+    "sweetalert2-react-content": "^5.0.7"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.0.3",
+    "eslint": "^8.45.0",
+    "eslint-plugin-react": "^7.32.2",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-refresh": "^0.4.3",
+    "vite": "^4.4.5"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:render": "vite build && echo '<!DOCTYPE html><html><head><meta http-equiv=\"refresh\" content=\"0; url=/\"></head><body><script>window.location.href=\"/\";</script></body></html>' > dist/404.html",
+    "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
+    "preview": "vite preview"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}

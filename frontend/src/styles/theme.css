@@ -1,0 +1,46 @@
+/* FeelTheTickets — Canje theme */
+:root {
+  --ftt-black: #0f172a; /* near black */
+  --ftt-gray: #334155;  /* slate gray */
+  --ftt-celeste: #38bdf8; /* sky/celeste */
+  --ftt-white: #ffffff;
+
+  /* Bootstrap palette alignment */
+  --bs-primary: var(--ftt-celeste);
+  --bs-dark: var(--ftt-black);
+  --bs-body-color: #111827;
+  --bs-body-bg: #f8fafc;
+}
+
+.bg-ftt { background: linear-gradient(90deg, var(--ftt-black), var(--ftt-gray)); }
+.text-celeste { color: var(--ftt-celeste) !important; }
+.text-ftt { color: var(--ftt-white) !important; }
+.btn-celeste { background-color: var(--ftt-celeste); color: #0b1020; border: none; }
+.btn-celeste:hover { background-color: #22a9e6; color: #0b1020; }
+.badge.text-bg-celeste { background-color: var(--ftt-celeste); color: #0b1020; }
+
+/* Navbar tweaks */
+.navbar.bg-ftt { border-bottom: 1px solid rgba(255,255,255,0.08); }
+.navbar .brand-text { color: var(--ftt-white); font-weight: 600; letter-spacing: 0.2px; }
+.navbar .logo-ftt { filter: drop-shadow(0 1px 1px rgba(0,0,0,0.4)); }
+
+/* Ensure dropdown is fully visible and not clipped */
+.navbar .dropdown-menu { max-height: none; overflow: visible; }
+.navbar .position-static { position: static !important; }
+.navbar .dropdown-menu-end { right: 0 !important; left: auto !important; }
+
+/* Cards and headers slight tint */
+.card .card-header { background-color: rgba(56, 189, 248, 0.08); }
+.card .card-title { color: var(--ftt-gray); }
+
+/* Links */
+a, .nav-link { transition: color .15s ease; }
+.navbar .nav-link:hover { color: var(--ftt-celeste) !important; }
+
+/* Tables helpers for visibility */
+.table thead th { background: rgba(15, 23, 42, 0.04); }
+.table .text-success { color: #22c55e !important; }
+
+/* Utility */
+.shadow-sm { box-shadow: 0 .125rem .25rem rgba(0, 0, 0, .075) !important; }
+.sticky-top { position: sticky; top: 0; z-index: 1030; }

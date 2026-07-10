@@ -1,0 +1,3 @@
+# Configuración de redirects para SPA
+/api/* https://feelthecanjeftt.onrender.com/api/:splat 200
+/*    /index.html   200

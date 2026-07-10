@@ -1,0 +1,22 @@
+{
+  "watch": ["src"],
+  "ext": "js,json",
+  "ignore": [
+    "node_modules/**/*",
+    "*.log",
+    "*.txt",
+    "temp/**/*",
+    "uploads/**/*",
+    ".git/**/*",
+    "logs/**/*",
+    "*.pid"
+  ],
+  "delay": 3000,
+  "restartable": "rs",
+  "env": {
+    "NODE_ENV": "development"
+  },
+  "verbose": false,
+  "legacyWatch": false,
+  "pollingInterval": 1000
+}

@@ -1,0 +1,96 @@
+.calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.weekday-name {
+  text-align: center;
+  font-weight: bold;
+  font-size: 0.85rem;
+  color: #495057;
+  padding: 8px 0;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.calendar-day {
+  aspect-ratio: 1;
+  border: 2px solid #dee2e6;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 6px 4px;
+  position: relative;
+  min-height: 70px;
+}
+
+.calendar-day:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  z-index: 1;
+}
+
+.calendar-day.other-month {
+  opacity: 0.3;
+  pointer-events: auto;
+}
+
+.calendar-day.selected {
+  border-width: 3px;
+  border-color: #0d6efd !important;
+  box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.3);
+  transform: scale(1.02);
+}
+
+.calendar-day.today {
+  background-color: #fff3cd !important;
+  font-weight: bold;
+}
+
+.calendar-day.today .day-number {
+  color: #856404;
+}
+
+.day-number {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 4px;
+  text-align: center;
+}
+
+.calendar-day .badge {
+  font-size: 0.6rem;
+  padding: 3px 5px;
+  margin-top: auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+@media (max-width: 768px) {
+  .calendar-day {
+    font-size: 0.8rem;
+  }
+  
+  .day-number {
+    font-size: 0.75rem;
+  }
+  
+  .calendar-day .badge {
+    font-size: 0.5rem;
+    padding: 1px 3px;
+  }
+}
