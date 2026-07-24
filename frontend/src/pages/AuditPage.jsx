@@ -24,11 +24,30 @@ const AuditPage = () => {
   const tiposLog = [
     'impresion',
     'reimpresion',
+    'canje',
+    'canje_masivo',
     'login',
     'logout',
     'creacion_usuario',
     'cambio_password'
   ];
+
+  const TIPO_LABELS = {
+    impresion: 'Impresión',
+    reimpresion: 'Reimpresión',
+    canje: 'Canje',
+    canje_masivo: 'Canje Masivo',
+    login: 'Login',
+    logout: 'Logout',
+    creacion_usuario: 'Creación Usuario',
+    cambio_password: 'Cambio Contraseña'
+  };
+
+  const ROLE_INFO = {
+    jefe: { label: 'Jefe', className: 'role-badge-jefe' },
+    staff: { label: 'Staff', className: 'role-badge-staff' },
+    impresor: { label: 'Impresor', className: 'role-badge-impresor' }
+  };
 
   useEffect(() => {
     if (user?.rol === 'jefe') {
@@ -79,16 +98,18 @@ const AuditPage = () => {
     setPagination(prev => ({ ...prev, page: newPage }));
   };
 
-  const getTipoColor = (tipo) => {
-    const colors = {
-      'impresion': 'success',
-      'reimpresion': 'warning',
-      'login': 'info',
-      'logout': 'secondary',
-      'creacion_usuario': 'primary',
-      'cambio_password': 'dark'
+  const getTipoClass = (tipo) => {
+    const classes = {
+      impresion: 'table-tag-active',
+      reimpresion: 'table-tag-pending',
+      canje: 'table-tag-active',
+      canje_masivo: 'table-tag-info',
+      login: 'table-tag-info',
+      logout: 'table-tag-neutral',
+      creacion_usuario: 'table-tag-info',
+      cambio_password: 'table-tag-danger'
     };
-    return colors[tipo] || 'secondary';
+    return classes[tipo] || 'table-tag-neutral';
   };
 
   const formatDetalles = (log) => {
@@ -143,7 +164,7 @@ const AuditPage = () => {
                   >
                     <option value="">Todos</option>
                     {tiposLog.map(tipo => (
-                      <option key={tipo} value={tipo}>{tipo}</option>
+                      <option key={tipo} value={tipo}>{TIPO_LABELS[tipo] || tipo}</option>
                     ))}
                   </select>
                 </div>
@@ -228,18 +249,17 @@ const AuditPage = () => {
                               {new Date(log.createdAt).toLocaleString()}
                             </td>
                             <td>
-                              <span className={`badge bg-${getTipoColor(log.tipo)}`}>
-                                {log.tipo}
+                              <span className={`table-tag ${getTipoClass(log.tipo)}`}>
+                                {TIPO_LABELS[log.tipo] || log.tipo}
                               </span>
                             </td>
                             <td>{log.usuario?.nombre || '-'}</td>
                             <td>
-                              <span className={`badge bg-${
-                                log.usuario?.rol === 'jefe' ? 'danger' : 
-                                log.usuario?.rol === 'staff' ? 'primary' : 'success'
-                              }`}>
-                                {log.usuario?.rol || '-'}
-                              </span>
+                              {log.usuario?.rol ? (
+                                <span className={`table-tag table-tag-${ROLE_INFO[log.usuario.rol] ? log.usuario.rol : 'default'}`}>
+                                  {(ROLE_INFO[log.usuario.rol] || {}).label || log.usuario.rol}
+                                </span>
+                              ) : '-'}
                             </td>
                             <td>{log.puntoTrabajo || '-'}</td>
                             <td>

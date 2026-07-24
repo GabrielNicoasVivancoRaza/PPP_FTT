@@ -24,6 +24,62 @@
 .navbar .brand-text { color: var(--ftt-white); font-weight: 600; letter-spacing: 0.2px; }
 .navbar .logo-ftt { filter: drop-shadow(0 1px 1px rgba(0,0,0,0.4)); }
 
+/* Top menu links */
+.ftt-nav { gap: 2px; }
+.ftt-nav-link.nav-link {
+  color: rgba(255,255,255,0.75) !important;
+  border-radius: 8px;
+  font-weight: 500;
+  font-size: 0.92rem;
+  transition: background-color .15s ease, color .15s ease;
+}
+.ftt-nav-link.nav-link:hover {
+  color: var(--ftt-white) !important;
+  background-color: rgba(255,255,255,0.08);
+}
+.ftt-nav-link.nav-link.active {
+  color: var(--ftt-black) !important;
+  background-color: var(--ftt-celeste);
+}
+
+/* User menu */
+.ftt-user-toggle.nav-link { color: var(--ftt-white) !important; padding: 4px 10px; border-radius: 10px; }
+.ftt-user-toggle.nav-link:hover { background-color: rgba(255,255,255,0.08); }
+.ftt-user-toggle::after { margin-left: 8px; }
+.ftt-user-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--ftt-celeste);
+  color: var(--ftt-black);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.95rem;
+  flex-shrink: 0;
+}
+
+/* Role badges */
+.role-badge {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  padding: 1px 8px;
+  border-radius: 20px;
+  line-height: 1.5;
+}
+.role-badge-jefe { background-color: rgba(56, 189, 248, 0.18); color: #0369a1; }
+.role-badge-staff { background-color: rgba(99, 102, 241, 0.15); color: #4338ca; }
+.role-badge-impresor { background-color: rgba(34, 197, 94, 0.15); color: #15803d; }
+.role-badge-default { background-color: rgba(148, 163, 184, 0.2); color: #475569; }
+.navbar .role-badge-jefe,
+.navbar .role-badge-staff,
+.navbar .role-badge-impresor,
+.navbar .role-badge-default { background-color: rgba(255,255,255,0.15); color: var(--ftt-white); }
+
 /* Ensure dropdown is fully visible and not clipped */
 .navbar .dropdown-menu { max-height: none; overflow: visible; }
 .navbar .position-static { position: static !important; }
@@ -38,9 +94,114 @@ a, .nav-link { transition: color .15s ease; }
 .navbar .nav-link:hover { color: var(--ftt-celeste) !important; }
 
 /* Tables helpers for visibility */
-.table thead th { background: rgba(15, 23, 42, 0.04); }
+.table thead:not(.table-dark) th { background: rgba(15, 23, 42, 0.04); }
 .table .text-success { color: #22c55e !important; }
+
+/* Dark table headers (Tickets): force contrast explicitly so no other rule
+   (e.g. the light-header helper above) can win on specificity and make the
+   header text unreadable against a light background. */
+.table thead.table-dark th,
+.table thead.table-dark td {
+  background-color: #212529 !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
 
 /* Utility */
 .shadow-sm { box-shadow: 0 .125rem .25rem rgba(0, 0, 0, .075) !important; }
 .sticky-top { position: sticky; top: 0; z-index: 1030; }
+
+/* Icon action buttons (edit/delete) */
+.btn-icon {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 0;
+  font-size: 0.95rem;
+  transition: background-color .15s ease, color .15s ease, border-color .15s ease;
+}
+.btn-icon-edit { color: #0369a1; background-color: rgba(56, 189, 248, 0.12); }
+.btn-icon-edit:hover { color: #fff; background-color: var(--ftt-celeste); }
+.btn-icon-delete { color: #dc3545; background-color: rgba(220, 53, 69, 0.1); }
+.btn-icon-delete:hover { color: #fff; background-color: #dc3545; }
+
+/* Locality chips */
+.chip-localidad {
+  display: inline-flex;
+  align-items: center;
+  background-color: rgba(51, 65, 85, 0.08);
+  color: var(--ftt-gray);
+  border: 1px solid rgba(51, 65, 85, 0.15);
+  border-radius: 20px;
+  padding: 3px 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.chip-localidad i { color: var(--ftt-celeste); }
+
+.punto-venta-card { border: 1px solid rgba(15, 23, 42, 0.08); transition: box-shadow .15s ease; }
+.punto-venta-card:hover { box-shadow: 0 .5rem 1rem rgba(15, 23, 42, .1); }
+
+/* Status chips (Estado / Primer Acceso / Tipo de log) */
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 20px;
+}
+.status-chip-active { background-color: rgba(34, 197, 94, 0.14); color: #15803d; }
+.status-chip-inactive { background-color: rgba(148, 163, 184, 0.2); color: #475569; }
+.status-chip-pending { background-color: rgba(245, 158, 11, 0.15); color: #b45309; }
+.status-chip-danger { background-color: rgba(220, 53, 69, 0.12); color: #b02a37; }
+.status-chip-info { background-color: rgba(56, 189, 248, 0.15); color: #0369a1; }
+.status-chip-neutral { background-color: rgba(51, 65, 85, 0.1); color: var(--ftt-gray); }
+
+/* Seat chip */
+.chip-seat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background-color: var(--ftt-black);
+  color: var(--ftt-celeste);
+  font-family: 'Courier New', monospace;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+}
+
+/* Plain-text table tags: same color coding as the chips above, but no
+   background/box — used inside <table> cells (Rol, Estado, Primer Acceso,
+   Tipo, Asiento) so cell values read as plain text instead of boxed pills. */
+.table-tag {
+  font-weight: 600;
+  font-size: 0.85rem;
+  background: none;
+  border: none;
+  padding: 0;
+  border-radius: 0;
+}
+.table-tag-jefe { color: #0369a1; }
+.table-tag-staff { color: #4338ca; }
+.table-tag-impresor { color: #15803d; }
+.table-tag-default { color: var(--ftt-gray); }
+
+.table-tag-active { color: #15803d; }
+.table-tag-inactive { color: var(--ftt-gray); }
+.table-tag-pending { color: #b45309; }
+.table-tag-danger { color: #b02a37; }
+.table-tag-info { color: #0369a1; }
+.table-tag-neutral { color: var(--ftt-gray); }
+
+.table-tag-seat {
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.5px;
+  color: var(--ftt-black);
+}

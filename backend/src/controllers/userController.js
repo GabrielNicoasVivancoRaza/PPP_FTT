@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const { isValidName } = require('../utils/validators');
 
 // @desc    Crear nuevo usuario
 // @route   POST /api/users
@@ -11,6 +12,13 @@ const createUser = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'Nombre, usuario y rol son requeridos'
+      });
+    }
+
+    if (!isValidName(nombre)) {
+      return res.status(400).json({
+        success: false,
+        message: 'El nombre solo debe contener letras'
       });
     }
 
@@ -105,7 +113,15 @@ const updateUser = async (req, res) => {
       });
     }
 
-    if (nombre) user.nombre = nombre;
+    if (nombre) {
+      if (!isValidName(nombre)) {
+        return res.status(400).json({
+          success: false,
+          message: 'El nombre solo debe contener letras'
+        });
+      }
+      user.nombre = nombre;
+    }
     if (puntoTrabajo && user.rol !== 'jefe') user.puntoTrabajo = puntoTrabajo;
     if (typeof activo === 'boolean') user.activo = activo;
 

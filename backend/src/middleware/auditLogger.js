@@ -2,9 +2,16 @@ const AuditLog = require('../models/AuditLog');
 
 const auditLogger = (tipo) => {
   return async (req, res, next) => {
+    // Capturar la IP y el User-Agent de forma síncrona, antes de enviar la
+    // respuesta. Si se leen más tarde (p.ej. dentro de setImmediate, luego de
+    // que res.json ya respondió), el socket puede estar cerrado y req.ip /
+    // req.connection quedan undefined, guardando la IP vacía en el log.
+    const clientIp = req.ip || req.socket?.remoteAddress || 'Unknown';
+    const clientUserAgent = req.get('User-Agent');
+
     // Guardar el método original de res.json
     const originalJson = res.json;
-    
+
     res.json = function(data) {
       // Solo registrar si la respuesta es exitosa
       if (res.statusCode < 400 && req.user) {
@@ -14,8 +21,8 @@ const auditLogger = (tipo) => {
             const logData = {
               tipo,
               usuario: req.user._id,
-              ip: req.ip || req.connection.remoteAddress,
-              userAgent: req.get('User-Agent'),
+              ip: clientIp,
+              userAgent: clientUserAgent,
               puntoTrabajo: req.user.puntoTrabajo
             };
 

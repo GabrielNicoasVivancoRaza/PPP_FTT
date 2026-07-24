@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
+import Swal from 'sweetalert2';
 
 const PuntosVenta = () => {
   const { user, token } = useAuth();
@@ -101,16 +102,34 @@ const PuntosVenta = () => {
   };
 
   const handleDelete = async (id, nombre) => {
-    if (!window.confirm(`¿Estás seguro de eliminar el punto de venta "${nombre}"?`)) {
+    const result = await Swal.fire({
+      title: '¿Eliminar punto de venta?',
+      text: `Se eliminará "${nombre}" de forma permanente.`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, eliminar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#dc3545',
+      reverseButtons: true
+    });
+
+    if (!result.isConfirmed) {
       return;
     }
 
     try {
       const response = await api.delete(`/puntos-venta/${id}`);
-      
+
       if (response.data.success) {
         fetchPuntosVenta();
         setError('');
+        Swal.fire({
+          title: 'Eliminado',
+          text: `El punto de venta "${nombre}" fue eliminado.`,
+          icon: 'success',
+          timer: 1800,
+          showConfirmButton: false
+        });
       } else {
         setError(response.data.message || 'Error al eliminar punto de venta');
       }
@@ -193,21 +212,26 @@ const PuntosVenta = () => {
           ) : (
             puntosVenta.map(punto => (
               <div key={punto._id} className="col-md-6 col-lg-4 mb-3">
-                <div className="card h-100">
+                <div className="card h-100 punto-venta-card">
                   <div className="card-header d-flex justify-content-between align-items-center">
-                    <h5 className="card-title mb-0">{punto.nombre}</h5>
-                    <div>
-                      <button 
-                        className="btn btn-sm btn-outline-primary me-2"
+                    <h5 className="card-title mb-0">
+                      <i className="bi bi-shop me-2 text-celeste"></i>
+                      {punto.nombre}
+                    </h5>
+                    <div className="d-flex gap-2">
+                      <button
+                        className="btn btn-sm btn-icon btn-icon-edit"
                         onClick={() => handleEdit(punto)}
+                        title="Editar punto de venta"
                       >
-                        <i className="bi bi-pencil"></i>
+                        <i className="bi bi-pencil-square"></i>
                       </button>
-                      <button 
-                        className="btn btn-sm btn-outline-danger"
+                      <button
+                        className="btn btn-sm btn-icon btn-icon-delete"
                         onClick={() => handleDelete(punto._id, punto.nombre)}
+                        title="Eliminar punto de venta"
                       >
-                        <i className="bi bi-trash"></i>
+                        <i className="bi bi-trash3"></i>
                       </button>
                     </div>
                   </div>
@@ -215,18 +239,20 @@ const PuntosVenta = () => {
                     {punto.descripcion && (
                       <p className="card-text text-muted">{punto.descripcion}</p>
                     )}
-                    
-                    <h6>Localidades asignadas:</h6>
-                    <div className="d-flex flex-wrap gap-1">
+
+                    <h6 className="text-uppercase text-muted small fw-semibold mb-2">Localidades asignadas</h6>
+                    <div className="d-flex flex-wrap gap-2">
                       {punto.localidades.map(localidad => (
-                        <span key={localidad} className="badge bg-secondary">
+                        <span key={localidad} className="chip-localidad">
+                          <i className="bi bi-geo-alt-fill me-1"></i>
                           {localidad}
                         </span>
                       ))}
                     </div>
-                    
+
                     <div className="mt-3">
                       <small className="text-muted">
+                        <i className="bi bi-person-circle me-1"></i>
                         Creado por: {punto.creadoPor?.name || 'Usuario'}
                       </small>
                     </div>

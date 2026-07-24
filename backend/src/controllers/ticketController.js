@@ -1,5 +1,6 @@
 const Ticket = require('../models/Ticket');
 const AuditLog = require('../models/AuditLog');
+const { isValidPhone, isValidName } = require('../utils/validators');
 
 // @desc    Obtener todos los tickets con filtros
 // @route   GET /api/tickets
@@ -421,6 +422,13 @@ const canjeTicket = async (req, res) => {
       });
     }
 
+    if (!isValidPhone(celular)) {
+      return res.status(400).json({
+        success: false,
+        message: 'El celular debe contener solo números (7 a 15 dígitos)'
+      });
+    }
+
     // Validaciones condicionales para "Otro"
     if (quienRetira === 'Otro') {
       if (!parentesco) {
@@ -433,6 +441,12 @@ const canjeTicket = async (req, res) => {
         return res.status(400).json({
           success: false,
           message: 'Debe especificar el nombre de quien retira cuando selecciona "Otro"'
+        });
+      }
+      if (!isValidName(quienOtro)) {
+        return res.status(400).json({
+          success: false,
+          message: 'El nombre de quien retira solo debe contener letras'
         });
       }
     }
@@ -582,11 +596,24 @@ const bulkCanjeTickets = async (req, res) => {
       });
     }
 
+    if (!isValidPhone(celular)) {
+      return res.status(400).json({
+        success: false,
+        message: 'El celular debe contener solo números (7 a 15 dígitos)'
+      });
+    }
+
     if (quienRetira === 'Otro') {
       if (!parentesco || !quienOtro) {
         return res.status(400).json({
           success: false,
           message: 'Parentesco y nombre son obligatorios cuando selecciona "Otro"'
+        });
+      }
+      if (!isValidName(quienOtro)) {
+        return res.status(400).json({
+          success: false,
+          message: 'El nombre de quien retira solo debe contener letras'
         });
       }
     }

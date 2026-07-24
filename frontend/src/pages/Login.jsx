@@ -125,12 +125,6 @@ const Login = () => {
                   </Button>
                 </div>
               </Form>
-
-              <div className="text-center mt-4">
-                <small className="text-muted">
-                  Contraseña por defecto: <strong>FTT2025</strong>
-                </small>
-              </div>
             </Card.Body>
           </Card>
         </Col>

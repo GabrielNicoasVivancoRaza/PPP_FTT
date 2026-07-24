@@ -1,7 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
+import Swal from 'sweetalert2';
+import { onlyLetters, isValidName } from '../utils/validators';
 import 'bootstrap/dist/css/bootstrap.min.css';
+
+const ROLE_INFO = {
+  jefe: { label: 'Jefe', className: 'role-badge-jefe' },
+  staff: { label: 'Staff', className: 'role-badge-staff' },
+  impresor: { label: 'Impresor', className: 'role-badge-impresor' }
+};
 
 const UsersPage = () => {
   const { user } = useAuth();
@@ -55,7 +63,12 @@ const UsersPage = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
+    if (!isValidName(formData.nombre)) {
+      alert('El nombre solo debe contener letras');
+      return;
+    }
+
     // Validar que si es staff/impresor tenga punto de trabajo
     if ((formData.rol === 'staff' || formData.rol === 'impresor') && !formData.puntoTrabajo) {
       alert('Debe seleccionar un punto de trabajo para usuarios staff e impresor');
@@ -99,16 +112,33 @@ const UsersPage = () => {
     fetchPuntosVenta(); // Refrescar puntos de venta al editar
   };
 
-  const handleDelete = async (userId) => {
-    if (window.confirm('¿Está seguro de eliminar este usuario?')) {
-      try {
-        await api.delete(`/users/${userId}`);
-        alert('Usuario eliminado exitosamente');
-        fetchUsers();
-      } catch (error) {
-        console.error('Error deleting user:', error);
-        alert(error.response?.data?.message || 'Error al eliminar usuario');
-      }
+  const handleDelete = async (userId, userName) => {
+    const result = await Swal.fire({
+      title: '¿Eliminar usuario?',
+      text: `Se eliminará a "${userName}" de forma permanente.`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, eliminar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#dc3545',
+      reverseButtons: true
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+      await api.delete(`/users/${userId}`);
+      fetchUsers();
+      Swal.fire({
+        title: 'Eliminado',
+        text: `El usuario "${userName}" fue eliminado.`,
+        icon: 'success',
+        timer: 1800,
+        showConfirmButton: false
+      });
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      Swal.fire('Error', error.response?.data?.message || 'Error al eliminar usuario', 'error');
     }
   };
 
@@ -174,43 +204,40 @@ const UsersPage = () => {
                           <td>{userItem.nombre}</td>
                           <td>{userItem.usuario}</td>
                           <td>
-                            <span className={`badge bg-${
-                              userItem.rol === 'jefe' ? 'danger' : 
-                              userItem.rol === 'staff' ? 'primary' : 'success'
-                            }`}>
-                              {userItem.rol}
+                            <span className={`table-tag table-tag-${ROLE_INFO[userItem.rol] ? userItem.rol : 'default'}`}>
+                              {(ROLE_INFO[userItem.rol] || {}).label || userItem.rol}
                             </span>
                           </td>
                           <td>{userItem.puntoTrabajo || '-'}</td>
                           <td>
-                            <span className={`badge bg-${userItem.activo ? 'success' : 'secondary'}`}>
+                            <span className={`table-tag ${userItem.activo ? 'table-tag-active' : 'table-tag-inactive'}`}>
                               {userItem.activo ? 'Activo' : 'Inactivo'}
                             </span>
                           </td>
                           <td>
                             {userItem.primerAcceso ? (
-                              <span className="badge bg-warning">Pendiente</span>
+                              <span className="table-tag table-tag-pending">Pendiente</span>
                             ) : (
-                              <span className="badge bg-success">Completado</span>
+                              <span className="table-tag table-tag-active">Completado</span>
                             )}
                           </td>
                           <td>{new Date(userItem.createdAt).toLocaleDateString()}</td>
                           <td>
-                            <div className="btn-group btn-group-sm">
+                            <div className="d-flex gap-2">
                               <button
-                                className="btn btn-outline-primary"
+                                className="btn btn-sm btn-icon btn-icon-edit"
                                 onClick={() => handleEdit(userItem)}
                                 title="Editar"
                               >
-                                <i className="fas fa-edit"></i>
+                                <i className="bi bi-pencil-square"></i>
                               </button>
                               {userItem._id !== user._id && (
                                 <button
-                                  className="btn btn-outline-danger"
-                                  onClick={() => handleDelete(userItem._id)}
+                                  className="btn btn-sm btn-icon btn-icon-delete"
+                                  onClick={() => handleDelete(userItem._id, userItem.nombre)}
                                   title="Eliminar"
                                 >
-                                  <i className="fas fa-trash"></i>
+                                  <i className="bi bi-trash3"></i>
                                 </button>
                               )}
                             </div>
@@ -247,7 +274,7 @@ const UsersPage = () => {
                           type="text"
                           className="form-control"
                           value={formData.nombre}
-                          onChange={(e) => setFormData({...formData, nombre: e.target.value})}
+                          onChange={(e) => setFormData({...formData, nombre: onlyLetters(e.target.value)})}
                           required
                         />
                       </div>

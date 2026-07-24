@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import socketService from '../services/socket';
+import { onlyDigits, onlyLetters, isValidPhone, isValidName } from '../utils/validators';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
 const TicketsPage = () => {
@@ -596,7 +597,12 @@ const TicketsPage = () => {
       alert('El número de celular es obligatorio');
       return;
     }
-    
+
+    if (!isValidPhone(printForm.celular)) {
+      alert('El celular debe contener solo números (7 a 15 dígitos)');
+      return;
+    }
+
     if (printForm.quienRetira === 'Otro') {
       if (!printForm.parentesco) {
         alert('Debe seleccionar el parentesco cuando selecciona "Otro"');
@@ -604,6 +610,10 @@ const TicketsPage = () => {
       }
       if (!printForm.quienOtro) {
         alert('Debe especificar el nombre de quien retira cuando selecciona "Otro"');
+        return;
+      }
+      if (!isValidName(printForm.quienOtro)) {
+        alert('El nombre de quien retira solo debe contener letras');
         return;
       }
     }
@@ -775,7 +785,12 @@ const TicketsPage = () => {
       alert('El número de celular es obligatorio');
       return;
     }
-    
+
+    if (!isValidPhone(bulkCanjeForm.celular)) {
+      alert('El celular debe contener solo números (7 a 15 dígitos)');
+      return;
+    }
+
     if (bulkCanjeForm.quienRetira === 'Otro') {
       if (!bulkCanjeForm.parentesco) {
         alert('Debe seleccionar el parentesco cuando selecciona "Otro"');
@@ -783,6 +798,10 @@ const TicketsPage = () => {
       }
       if (!bulkCanjeForm.quienOtro) {
         alert('Debe especificar el nombre de quien retira cuando selecciona "Otro"');
+        return;
+      }
+      if (!isValidName(bulkCanjeForm.quienOtro)) {
+        alert('El nombre de quien retira solo debe contener letras');
         return;
       }
     }
@@ -873,12 +892,7 @@ const TicketsPage = () => {
     // Actualización manual con indicador visible
     refreshTicketsData(true);
   };
-  
-  // Función para alternar actualización automática
-  const toggleRealTime = () => {
-    setIsRealTimeActive(!isRealTimeActive);
-  };
-  
+
   // Función para actualización manual completa (con loading)
   const handleManualRefresh = async () => {
     try {
@@ -1097,60 +1111,6 @@ const TicketsPage = () => {
               )}
             </div>
             <div className="d-flex align-items-center gap-2">
-              {/* Indicador de estado de conexión - más discreto */}
-              <div className="d-flex align-items-center me-3">
-                {(() => {
-                  const hasActiveFilters = search.trim() !== '' || seatSearch.trim() !== '' || ticketIdSearch.trim() !== '';
-                  
-                  if (hasActiveFilters) {
-                    // Pausado por filtros activos
-                    return (
-                      <span className="badge bg-info me-2" style={{fontSize: '0.7em'}} title="Actualizaciones pausadas mientras hay filtros activos">
-                        <i className="fas fa-pause me-1"></i>
-                        Pausado (Filtros)
-                      </span>
-                    );
-                  } else {
-                    // Estado normal
-                    return (
-                      <>
-                        <span className={`badge me-2 ${
-                          connectionStatus === 'connected' ? 'bg-success' :
-                          connectionStatus === 'error' ? 'bg-danger' : 'bg-warning'
-                        }`} style={{fontSize: '0.7em'}}>
-                          <i className={`fas ${
-                            connectionStatus === 'connected' ? 'fa-wifi' :
-                            connectionStatus === 'error' ? 'fa-exclamation-triangle' : 'fa-clock'
-                          } me-1`}></i>
-                          {connectionStatus === 'connected' ? 'Conectado' :
-                           connectionStatus === 'error' ? 'Error' : 'Conectando'}
-                        </span>
-                        {lastUpdateTime && (
-                          <small className="text-muted" style={{fontSize: '0.7em'}}>
-                            Últ: {lastUpdateTime.toLocaleTimeString('es-ES', {hour: '2-digit', minute: '2-digit'})}
-                          </small>
-                        )}
-                      </>
-                    );
-                  }
-                })()}
-              </div>
-              
-              {/* Botón de tiempo real - más discreto */}
-              <button
-                className={`btn btn-sm me-2 ${
-                  isRealTimeActive ? 'btn-outline-success' : 'btn-outline-secondary'
-                }`}
-                onClick={toggleRealTime}
-                title={isRealTimeActive ? 'Desactivar sincronización automática' : 'Activar sincronización automática'}
-                style={{fontSize: '0.8em'}}
-              >
-                <i className={`fas ${
-                  isRealTimeActive ? 'fa-sync' : 'fa-pause'
-                } me-1`}></i>
-                {isRealTimeActive ? 'Auto' : 'Manual'}
-              </button>
-              
               {/* Botón de actualización manual */}
               <button
                 className="btn btn-outline-primary btn-sm"
@@ -1158,14 +1118,12 @@ const TicketsPage = () => {
                 disabled={loading || updateIndicator}
                 style={{fontSize: '0.8em'}}
               >
-                <i className={`fas fa-sync ${
-                  updateIndicator ? 'fa-spin text-success' : ''
-                }`}></i> 
-                {updateIndicator ? 'Sync...' : 'Actualizar'}
+                <i className={`fas fa-sync ${updateIndicator ? 'fa-spin' : ''}`}></i>{' '}
+                Actualizar
               </button>
 
               {/* Botón de canje masivo (para jefe y staff) */}
-              {(isJefe || !isJefe) && selectedTickets.size > 0 && (
+              {selectedTickets.size > 0 && (
                 <button
                   className="btn btn-success btn-sm"
                   onClick={handleBulkCanje}
@@ -1429,42 +1387,28 @@ const TicketsPage = () => {
                             <span className="badge bg-danger me-1">●</span>
                             Cancelados
                           </small>
-                          {isRealTimeActive && (
-                            <small className="text-success" style={{fontSize: '0.7em'}}>
-                              <i className="fas fa-circle me-1" style={{fontSize: '0.4em'}}></i>
-                              Sync auto
-                            </small>
-                          )}
                         </div>
                       </div>
                       <div className="d-flex align-items-center">
                         <span className="badge bg-primary me-2">
                           Página {pagination.page} de {pagination.pages}
                         </span>
-                        {updateIndicator && (
-                          <span className="badge bg-success">
-                            <i className="fas fa-sync fa-spin me-1"></i>
-                            Sincronizando...
-                          </span>
-                        )}
                       </div>
                     </div>
 
                     <div className="table-responsive">
                       <table className="table table-hover table-sm">
-                        <thead style={{ backgroundColor: '#212529', color: '#ffffff' }}>
+                        <thead className="table-dark">
                           <tr>
-                            {(isJefe || !isJefe) && (
-                              <th style={{ width: '50px' }}>
-                                <input
-                                  type="checkbox"
-                                  className="form-check-input"
-                                  onChange={handleSelectAll}
-                                  checked={selectedTickets.size > 0 && selectedTickets.size === tickets.filter(t => !t.canjeado).length}
-                                  title="Seleccionar todos"
-                                />
-                              </th>
-                            )}
+                            <th style={{ width: '50px' }}>
+                              <input
+                                type="checkbox"
+                                className="form-check-input"
+                                onChange={handleSelectAll}
+                                checked={selectedTickets.size > 0 && selectedTickets.size === tickets.filter(t => !t.canjeado).length}
+                                title="Seleccionar todos"
+                              />
+                            </th>
                             <th>Nombre</th>
                             <th>Email</th>
                             <th 
@@ -1501,17 +1445,15 @@ const TicketsPage = () => {
                                 key={ticket['Ticket ID']} 
                                 className={getRowClasses(ticket)}
                               >
-                                {(isJefe || !isJefe) && (
-                                  <td>
-                                    <input
-                                      type="checkbox"
-                                      className="form-check-input"
-                                      checked={selectedTickets.has(ticket['Ticket ID'])}
-                                      onChange={() => handleSelectTicket(ticket['Ticket ID'])}
-                                      disabled={ticket.canjeado}
-                                    />
-                                  </td>
-                                )}
+                                <td>
+                                  <input
+                                    type="checkbox"
+                                    className="form-check-input"
+                                    checked={selectedTickets.has(ticket['Ticket ID'])}
+                                    onChange={() => handleSelectTicket(ticket['Ticket ID'])}
+                                    disabled={ticket.canjeado}
+                                  />
+                                </td>
                                 <td>
                                   <strong>{`${ticket['First Name']} ${ticket['Last Name']}`}</strong>
                                 </td>
@@ -1519,7 +1461,7 @@ const TicketsPage = () => {
                                   <small>{ticket['Email']}</small>
                                 </td>
                                 <td>
-                                  <span className="badge bg-info">{ticket['Seat']}</span>
+                                  <span className="table-tag table-tag-seat">{ticket['Seat']}</span>
                                 </td>
                                 <td>
                                   <small>{ticket['Ticket']}</small>
@@ -1762,7 +1704,7 @@ const TicketsPage = () => {
                               className="form-control"
                               placeholder="Nombre completo de quien retira"
                               value={printForm.quienOtro}
-                              onChange={(e) => setPrintForm({...printForm, quienOtro: e.target.value})}
+                              onChange={(e) => setPrintForm({...printForm, quienOtro: onlyLetters(e.target.value)})}
                             />
                           </div>
                         </>
@@ -1773,8 +1715,8 @@ const TicketsPage = () => {
                         <div className="alert alert-info">
                           <small>
                             <i className="fas fa-info-circle me-1"></i>
-                            {printForm.quienRetira === 'Titular' 
-                              ? 'El titular del ticket retira personalmente' 
+                            {printForm.quienRetira === 'Titular'
+                              ? 'El titular del ticket retira personalmente'
                               : 'El titular de la compra retira personalmente'}
                           </small>
                         </div>
@@ -1784,10 +1726,12 @@ const TicketsPage = () => {
                         <label className="form-label">Celular *</label>
                         <input
                           type="tel"
+                          inputMode="numeric"
                           className="form-control"
                           placeholder="Número de celular"
                           value={printForm.celular}
-                          onChange={(e) => setPrintForm({...printForm, celular: e.target.value})}
+                          maxLength={15}
+                          onChange={(e) => setPrintForm({...printForm, celular: onlyDigits(e.target.value)})}
                         />
                       </div>
                     </div>
@@ -1846,7 +1790,7 @@ const TicketsPage = () => {
                                   <div className="border rounded p-2">
                                     <small>
                                       <strong>{ticket['First Name']} {ticket['Last Name']}</strong><br />
-                                      Asiento: <span className="badge bg-info">{ticket['Seat']}</span><br />
+                                      Asiento: <span className="chip-seat"><i className="bi bi-person-square"></i>{ticket['Seat']}</span><br />
                                       Ticket: <code>{ticket['Ticket ID']}</code>
                                     </small>
                                   </div>
@@ -1904,7 +1848,7 @@ const TicketsPage = () => {
                               className="form-control"
                               placeholder="Nombre completo de quien retira"
                               value={bulkCanjeForm.quienOtro}
-                              onChange={(e) => setBulkCanjeForm({...bulkCanjeForm, quienOtro: e.target.value})}
+                              onChange={(e) => setBulkCanjeForm({...bulkCanjeForm, quienOtro: onlyLetters(e.target.value)})}
                             />
                           </div>
                         </>
@@ -1914,8 +1858,8 @@ const TicketsPage = () => {
                         <div className="alert alert-info">
                           <small>
                             <i className="fas fa-info-circle me-1"></i>
-                            {bulkCanjeForm.quienRetira === 'Titular' 
-                              ? 'El titular de los tickets retira personalmente' 
+                            {bulkCanjeForm.quienRetira === 'Titular'
+                              ? 'El titular de los tickets retira personalmente'
                               : 'El titular de la compra retira personalmente'}
                           </small>
                         </div>
@@ -1925,10 +1869,12 @@ const TicketsPage = () => {
                         <label className="form-label">Celular *</label>
                         <input
                           type="tel"
+                          inputMode="numeric"
                           className="form-control"
                           placeholder="Número de celular"
                           value={bulkCanjeForm.celular}
-                          onChange={(e) => setBulkCanjeForm({...bulkCanjeForm, celular: e.target.value})}
+                          maxLength={15}
+                          onChange={(e) => setBulkCanjeForm({...bulkCanjeForm, celular: onlyDigits(e.target.value)})}
                         />
                       </div>
                     </div>
@@ -1988,7 +1934,7 @@ const TicketsPage = () => {
                       </div>
                       <div className="col-6">
                         <strong>Asiento:</strong>
-                        <p><span className="badge bg-info">{selectedCanjeInfo['Seat']}</span></p>
+                        <p><span className="chip-seat"><i className="bi bi-person-square"></i>{selectedCanjeInfo['Seat']}</span></p>
                       </div>
                     </div>
                     
@@ -2029,7 +1975,9 @@ const TicketsPage = () => {
                       <div className="col-12">
                         <strong>Usuario que Canjea:</strong>
                         <p className="text-muted">
-                          {selectedCanjeInfo.usuarioCanje?.nombre || 'Usuario desconocido'}
+                          {selectedCanjeInfo.usuarioResponsable?.nombre ||
+                            selectedCanjeInfo.usuarioResponsable?.usuario ||
+                            'Usuario desconocido'}
                         </p>
                       </div>
                     </div>

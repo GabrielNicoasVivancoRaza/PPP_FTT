@@ -12,7 +12,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: MONGODB_URI
-        value: mongodb+srv://gabriel:gabriel@bddshakira.l08bhec.mongodb.net/Shakira8Noviembre
+        sync: false # Configurar manualmente en el dashboard de Render (no versionar credenciales)
       - key: JWT_SECRET
         generateValue: true
       - key: DEFAULT_PASSWORD
