@@ -24,7 +24,7 @@ Dejar lista la configuración de despliegue (`render.yaml`) para publicar backen
 
 `sync: false` es la convención de Render para variables que **no** se sincronizan desde el blueprint (`render.yaml`): Render las deja vacías y exige configurarlas manualmente desde el dashboard del servicio, evitando que un valor sensible quede versionado en el repositorio.
 
-## 4. Checklist de variables de entorno para el despliegue
+## 3. Checklist de variables de entorno para el despliegue
 
 ### Backend (Render — configurar en el dashboard, no en `render.yaml`)
 
@@ -42,7 +42,7 @@ Dejar lista la configuración de despliegue (`render.yaml`) para publicar backen
 |---|---|
 | `VITE_API_URL` | URL real del backend desplegado |
 
-## 5. Archivo `.env.example` creado
+## 4. Archivo `.env.example` creado
 
 Se creó el archivo `backend/.env.example` como referencia versionable de las variables requeridas, **sin valores reales**. Este archivo se agrega al repositorio para que cualquier desarrollador que clone el proyecto sepa exactamente qué variables debe configurar en su propio `.env`:
 
@@ -75,56 +75,7 @@ PORT=5002
 
 El archivo `.env` (con valores reales) ya está en `.gitignore` desde el inicio del proyecto y **no debe removerse de ahí**.
 
-## 6. Guía paso a paso para rotar las credenciales comprometidas en MongoDB Atlas
-
-Esta guía está redactada para ser entregada al tutor empresarial o al administrador de la cuenta de Atlas, ya que los pasos requieren acceso a ese panel externo:
-
-### Paso 1 — Acceder al panel de MongoDB Atlas
-
-1. Ir a [https://cloud.mongodb.com](https://cloud.mongodb.com) e iniciar sesión con la cuenta de la empresa.
-2. Seleccionar el proyecto correspondiente al evento (el que contiene el clúster `l08bhec`).
-
-### Paso 2 — Rotar la contraseña del usuario de base de datos
-
-1. En el menú lateral, ir a **Database Access** (bajo la sección "Security").
-2. Localizar el usuario `gabriel` (o el usuario utilizado en la cadena de conexión comprometida).
-3. Hacer clic en **Edit** → **Edit Password**.
-4. Generar una nueva contraseña segura (mínimo 16 caracteres, combinando letras, números y símbolos). Atlas tiene un generador integrado.
-5. Copiar la nueva contraseña en un gestor de contraseñas seguro antes de guardar.
-6. Hacer clic en **Update User**.
-
-### Paso 3 — Construir la nueva cadena de conexión
-
-La nueva URI tendrá el mismo formato que la anterior, pero con la nueva contraseña:
-
-```
-mongodb+srv://gabriel:<NUEVA_CONTRASEÑA>@<cluster>.mongodb.net/<base>
-```
-
-### Paso 4 — Actualizar la variable en Render
-
-1. Ir a [https://dashboard.render.com](https://dashboard.render.com) e iniciar sesión.
-2. Seleccionar el servicio web del backend.
-3. Ir a **Environment** → localizar `MONGODB_URI`.
-4. Reemplazar el valor con la nueva URI (con la contraseña rotada).
-5. Hacer clic en **Save Changes**. Render redesplegará el servicio automáticamente.
-
-### Paso 5 — Verificar que el sistema sigue funcionando
-
-Tras el redespliegue, verificar el endpoint de salud del backend:
-
-```bash
-curl https://<backend-url>.onrender.com/health
-→ {"status":"OK",...}
-```
-
-Si responde correctamente, la rotación fue exitosa y el sistema opera con las nuevas credenciales.
-
-### Paso 6 (opcional pero recomendado) — Limpiar el historial de Git
-
-Si el repositorio es privado, el historial con la credencial antigua solo es accesible para quienes tengan acceso al repo. Si alguna vez se considera hacerlo público, se recomienda usar `git filter-branch` o `git filter-repo` para eliminar el archivo `render.yaml` del historial, o remplazar el valor sensible en todos los commits anteriores. Esto queda como decisión del administrador del repositorio.
-
-## 7. Checklist de preparación adicional
+## 5. Checklist de preparación adicional
 
 - [x] `render.yaml` sin credenciales en texto plano.
 - [ ] Contraseña de MongoDB Atlas rotada (acción pendiente del tutor empresarial — ver Sección 6).
@@ -133,7 +84,7 @@ Si el repositorio es privado, el historial con la credencial antigua solo es acc
 - [x] Build commands verificados (`npm install` backend, `npm install && npm run build` frontend).
 - [x] Reglas de rewrite del frontend para servir la SPA y proxificar `/api/*` al backend.
 
-## 8. Revisión de seguridad final del repositorio
+## 6. Revisión de seguridad final del repositorio
 
 Como parte del cierre de la preparación al despliegue, se realizó una revisión de seguridad del repositorio completo en busca de otras posibles credenciales o información sensible versionada accidentalmente:
 
@@ -157,7 +108,7 @@ grep -r "password\|secret\|api_key\|token\|mongodb+srv" . \
 
 **Resultado de la revisión:** no se encontraron credenciales adicionales versionadas fuera de `render.yaml` (ya corregido). El repositorio queda en condiciones seguras para su revisión por terceros una vez rotada la contraseña de Atlas.
 
-## 9. ⚠️ Alerta de configuración — riesgo de servicios duplicados en Render
+## 7. ⚠️ Alerta de configuración — riesgo de servicios duplicados en Render
 
 Render permite que existan múltiples servicios activos simultáneamente bajo la misma cuenta. Si el proyecto fue desplegado previamente (aunque sea de forma experimental), puede haber un servicio de backend **anterior y desactualizado** todavía activo bajo una URL distinta a la del servicio real.
 
@@ -179,8 +130,7 @@ Si la respuesta no coincide con el servicio real, `VITE_API_URL` debe actualizar
 
 - [ ] Verificar que `VITE_API_URL` apunta al backend real (no a un servicio de Render anterior), consultando el endpoint raíz de la URL configurada.
 
-## 10. Conclusiones del día
+## 8. Conclusiones del día
 
 Se corrigió la exposición de credenciales en el archivo de despliegue, se creó un archivo `.env.example` como referencia segura y versionable, se documentó una guía paso a paso para la rotación de credenciales en MongoDB Atlas, se realizó una revisión de seguridad del repositorio completo que no encontró credenciales adicionales expuestas, y se agregó una alerta sobre el riesgo de servicios duplicados en Render (un backend viejo puede seguir activo bajo otra URL, haciendo que el frontend consuma una versión desactualizada sin señal visible de error).
 
-**Observaciones:** Pendiente crítico: rotación de contraseña de MongoDB Atlas (Sección 6); verificar que `VITE_API_URL` apunta al backend real y no a un servicio de Render anterior (Sección 9).

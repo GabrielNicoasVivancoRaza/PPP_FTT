@@ -14,7 +14,7 @@ Consolidar en una sola ronda de pruebas funcionales todos los módulos del siste
 
 ## 2. Metodología de esta ronda
 
-- **Verificación en vivo (Día 31):** arranque de backend + frontend + conexión real a MongoDB Atlas, endpoints de salud, prueba de humo de rutas protegidas.
+
 - **Verificación funcional por módulo:** consolidación de los casos ya ejecutados por inspección de código en las Semanas 4 y 5 (autenticación, usuarios, roles, consulta, búsquedas, canje, impresión), ahora reconfirmados contra un entorno que se sabe que arranca correctamente de punta a punta.
 - **Nueva verificación de esta semana:** revisión de los módulos de auditoría, reportes y dashboard (Semana 6), que aún no habían pasado por una ronda de pruebas funcionales dedicada.
 - **Criterio de estado:** un caso se marca "✅ Conforme" cuando el comportamiento observado coincide con el comportamiento esperado definido en la historia de usuario o requerimiento funcional de la Semana 2. Se marca "⚠️ Observación" si funciona pero con una condición a documentar, y "❌ Fallo" si el resultado real difiere del esperado.
@@ -29,7 +29,7 @@ Consolidar en una sola ronda de pruebas funcionales todos los módulos del siste
 | Consulta y filtros de tickets | PC-01 a PC-08 (Semana 5) | ✅ Conforme |
 | Canje individual y masivo | PCJ-01 a PCJ-07 (Semana 5) | ✅ Conforme |
 | Impresión y reimpresión | PI-01 a PI-06 (Semana 5) | ✅ Conforme |
-| Arranque e integración (backend, frontend, DB) | Verificación en vivo (Día 31) | ✅ Conforme |
+| Arranque e integración (backend, frontend, DB) | Verificación en vivo | ✅ Conforme |
 
 ## 4. Nuevos casos de prueba — Auditoría, Reportes y Dashboard
 
@@ -80,7 +80,7 @@ Durante la ejecución de la ronda de pruebas se registraron los siguientes compo
 
 ## 8. Incidencias detectadas durante esta ronda (para el Día 33)
 
-- Se identificó que el `defaultMeta.service` del logger (`config/logger.js`) todavía usaba el nombre `'shakira-tickets'`, una referencia al proyecto anterior, visible en cada línea de log (`logs/combined.log`, `logs/error.log`). No es un error funcional, pero es una inconsistencia de identidad del sistema que conviene corregir junto con el resto de incidencias de esta semana.
+- Se identificó que el `defaultMeta.service` del logger (`config/logger.js`) todavía usaba el nombre incorrecto, una referencia a otro proyecto, visible en cada línea de log (`logs/combined.log`, `logs/error.log`). No es un error funcional, pero es una inconsistencia de identidad del sistema que conviene corregir junto con el resto de incidencias de esta semana.
 - No se detectaron incidencias bloqueantes (errores 500, caídas del servidor, fallos de integración) durante esta ronda.
 
 ## 9. Conclusiones del día

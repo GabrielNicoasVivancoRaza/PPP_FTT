@@ -109,7 +109,7 @@ Como parte de la reunión de cierre, se revisó con el tutor empresarial el cump
 
 - **La validación en vivo tardó menos de lo esperado gracias a la revisión por código.** La decisión de las Semanas 4, 5 y 6 de verificar el comportamiento por inspección de código antes de tener un entorno de integración completo demostró ser eficiente: cuando se levantó el entorno en vivo (Día 31), el sistema arrancó sin errores de arranque, lo que habría tardado mucho más si se hubiera esperado a la integración para descubrir los primeros errores.
 - **Los hallazgos de seguridad más críticos surgieron de revisiones de archivos no funcionales.** Las credenciales en `render.yaml` y la doble creación de administrador no eran visibles al revisar el código funcional (controladores, rutas); surgieron al revisar archivos de configuración y scripts auxiliares. En futuros proyectos conviene incluir una revisión explícita de ese tipo de archivos desde etapas tempranas.
-- **La deuda técnica acumulada de un proyecto anterior fue la fuente principal de incidencias.** Cuatro de las seis incidencias detectadas (fallback hardcodeado, campo de búsqueda muerto, doble admin, nombre del logger) eran remanentes del proyecto anterior. Al trabajar sobre una base de código existente, una auditoría de "referencias al proyecto anterior" al inicio habría detectado varios de estos problemas mucho antes.
+
 
 ### De proceso
 
@@ -119,7 +119,7 @@ Como parte de la reunión de cierre, se revisó con el tutor empresarial el cump
 
 ## 11. Pendientes que quedan fuera del alcance de esta pasantía
 
-- Rotación de la contraseña de MongoDB Atlas comprometida (acción administrativa externa, responsabilidad de la empresa).
+
 - Ejecución real de la publicación en Render (requiere acceso a la cuenta de la empresa); verificar que `VITE_API_URL` apunta al servicio de backend correcto y no a un servicio anterior activo bajo otra URL.
 - Resolución del item DT-06: agregar `'impresor'` al enum de roles en `User.js`.
 - Resolución del item DT-07: unificar el acceso a las colecciones de tickets (`FechaUno` / `Lumineers_Canje`) para que lectura y escritura de canje operen siempre sobre la misma colección.
@@ -136,10 +136,5 @@ El tutor empresarial confirma que el sistema entregado cumple con los objetivos 
 1. Se da por cerrado el desarrollo correspondiente a esta pasantía.
 2. Los pendientes de infraestructura (rotación de credenciales, despliegue real, corrección de enum de Impresor) quedan como responsabilidad de la empresa, con el procedimiento ya documentado para ejecutarlos.
 3. Se agradece la guía y disponibilidad del tutor empresarial durante las 8 semanas del proceso.
+4. Presentación y capacitación básica a usuarios
 
----
-
-**Firma Pasante:** ______________________
-**Firma Tutor Empresarial:** ______________________
-
-**Observaciones generales:** Proyecto cerrado con todos los objetivos funcionales cumplidos (13/13 RF, 10/10 RNF); pendientes de infraestructura documentados y transferidos a la empresa; 8 items de deuda técnica registrados, incluyendo DT-07 (colecciones divergentes) y DT-08 (Socket.IO) con impacto directo en producción.

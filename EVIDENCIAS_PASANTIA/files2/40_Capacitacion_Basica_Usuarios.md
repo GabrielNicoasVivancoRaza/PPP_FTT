@@ -1,7 +1,7 @@
 # Capacitación Básica a Usuarios
 
-**Actividad N°:** 38
-**Fecha:** 22/07/2026
+**Actividad N°:** 40
+**Fecha:** 24/07/2026
 **Horario:** 14:00 a 20:00
 **Tutor Empresarial:** Miguel Vivanco
 **Pasante:** Gabriel

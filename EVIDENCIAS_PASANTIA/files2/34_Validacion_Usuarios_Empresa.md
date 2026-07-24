@@ -31,17 +31,16 @@ Antes de iniciar la demostración con el tutor, se preparó el entorno de prueba
 | `staff_demo` | `Staff2026!` | Staff | Punto de Venta "Entrada Principal" |
 | `staff_nuevo` | (contraseña inicial, cambio forzado) | Staff | Punto de Venta "Entrada VIP" |
 
-### 3.2 Tickets de prueba seleccionados para la demostración
+### 3.2 Casos de prueba seleccionados para la demostración
 
-Se seleccionaron los siguientes tickets del conjunto de datos de prueba, eligiendo uno por cada escenario a demostrar:
+Se seleccionaron escenarios representativos para validar los principales flujos funcionales del sistema. En cada caso se verificó que el comportamiento observado coincidiera con el esperado según las reglas de negocio.
 
-| Ticket ID | Nombre del titular | Localidad | Estado inicial | Usado en paso |
-|---|---|---|---|---|
-| TKT-00001 | Juan Pérez | Platea Alta | Disponible | Paso 3 (canje individual) |
-| TKT-00002 | María López | Platea Baja | Disponible | Paso 4 (canje masivo, junto con TKT-00003) |
-| TKT-00003 | Carlos Ruiz | Platea Baja | Disponible | Paso 4 (canje masivo) |
-| TKT-00001 | Juan Pérez | Platea Alta | Canjeado (tras paso 3) | Paso 5 (verificar bloqueo de doble canje) |
-| TKT-00004 | Ana Torres | VIP | Canjeado previamente | Paso 6 (reimpresión con motivo) |
+| Caso de prueba | Estado inicial | Acción realizada | Resultado esperado |
+|----------------|----------------|------------------|--------------------|
+| Canje individual exitoso | Ticket disponible | Se realizó el canje individual de un ticket desde la interfaz del sistema. | El ticket debe cambiar a estado **Canjeado**, registrarse la operación en la auditoría y notificarse el evento mediante Socket.IO. |
+| Canje masivo | Tickets disponibles | Se ejecutó el proceso de canje masivo sobre varios tickets. | Todos los tickets seleccionados deben cambiar a estado **Canjeado**, completando la operación sin errores y registrando cada canje en la auditoría. |
+| Bloqueo de doble canje | Ticket previamente canjeado | Se intentó canjear nuevamente un ticket que ya había sido utilizado. | El sistema debe rechazar la operación, informar que el ticket ya fue canjeado y mantener la información sin modificaciones. |
+
 
 ### 3.3 Limpieza post-demostración
 
@@ -62,7 +61,6 @@ Tras la sesión, los registros de canje generados durante la demostración (Paso
 | 9 | Gestión de un Punto de Venta y sus localidades | Jefe | 8 min |
 | 10 | Cambio de contraseña en primer acceso | Staff (usuario nuevo) | 5 min |
 
-**Duración total de la sesión de demostración:** aproximadamente 65 minutos.
 
 ## 5. Retroalimentación recibida del tutor empresarial
 

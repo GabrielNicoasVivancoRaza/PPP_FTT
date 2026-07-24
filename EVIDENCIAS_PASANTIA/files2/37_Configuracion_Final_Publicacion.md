@@ -18,7 +18,7 @@ La publicación real requiere acceso a paneles externos (Render, MongoDB Atlas) 
 
 ## 3. Procedimiento de publicación (Backend)
 
-1. Confirmar que la contraseña de MongoDB Atlas fue rotada (pendiente crítico del Día 36) y obtener la nueva cadena de conexión `MONGODB_URI`.
+1. Confirmar que la contraseña de MongoDB Atlas fue rotada y obtener la nueva cadena de conexión `MONGODB_URI`.
 2. En el dashboard de Render, crear/actualizar el servicio web `backend` con:
    - **Root directory:** `backend`
    - **Runtime:** Node

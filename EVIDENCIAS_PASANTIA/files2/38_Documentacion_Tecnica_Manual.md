@@ -1,7 +1,7 @@
 # Elaboración de Documentación Técnica y Manual
 
-**Actividad N°:** 39
-**Fecha:** 23/07/2026
+**Actividad N°:** 38
+**Fecha:** 22/07/2026
 **Horario:** 14:00 a 20:00
 **Tutor Empresarial:** Miguel Vivanco
 **Pasante:** Gabriel

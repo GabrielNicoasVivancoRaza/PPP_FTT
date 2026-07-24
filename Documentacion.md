@@ -86,8 +86,6 @@ Canje FTT/
 └── Documentacion.md                # Este documento
 ```
 
-> **Nota:** existen algunos archivos legado sin uso activo en el repositorio (p. ej. `App_backup.jsx`, `App_render.jsx`, `Navigation_fixed.jsx`, `TicketsPage_fixed.jsx` en el frontend, y `src/utils/csvImporter.js` / `src/scripts/importCSV.js` en el backend, que no forman parte del flujo oficial de importación). No se cargan ni se ejecutan en producción; ver sección 14.
-
 ## 4. Roles y permisos
 
 | Rol | Acceso |

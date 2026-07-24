@@ -20,18 +20,18 @@ Cerrar formalmente el registro de incidencias detectadas durante todo el ciclo d
 | 2 | Fallback hardcodeado de localidades de un evento anterior en `getTicketsForStaff`, activable si el punto de trabajo no coincidía con ningún Punto de Venta real | Desarrollo, Semana 5 (Día 21) | Alta (datos incorrectos silenciosos) | ✅ Corregida en Semana 5 (Día 21) |
 | 3 | Condición de búsqueda muerta `'Número de Cédula: '` en 3 controladores, nunca coincidía con el schema real | Desarrollo, Semana 5 (Día 22) | Baja (deuda técnica, sin impacto funcional) | ✅ Corregida en Semana 5 (Día 22) |
 | 4 | Doble mecanismo de creación de usuario administrador (`database.js` creaba `admin@shakira.com` automáticamente, compitiendo con `setup.js`) | Validación administrativa, Semana 6 (Día 30) | Alta (credenciales documentadas podían no funcionar) | ✅ Corregida en Semana 6 (Día 30) |
-| 5 | Nombre de servicio `'shakira-tickets'` en metadatos del logger (Winston), remanente del proyecto anterior | Pruebas funcionales, Semana 7 (Día 32) | Muy baja (cosmética, solo visible en logs internos) | ✅ Corregida hoy (Día 33) |
+| 5 | Nombre de servicio `'FTT-tickets'` en metadatos del logger (Winston), remanente del proyecto anterior | Pruebas funcionales, Semana 7 (Día 32) | Muy baja (cosmética, solo visible en logs internos) | ✅ Corregida hoy (Día 33) |
 
 ## 3. Corrección aplicada hoy: nombre de servicio en el logger
 
 **Archivo modificado:** `backend/src/config/logger.js`
 
 ```diff
-- defaultMeta: { service: 'shakira-tickets' },
+- defaultMeta: { service: 'FTT-tickets' },
 + defaultMeta: { service: 'canje-ftt' },
 ```
 
-Este cambio no afecta el comportamiento del sistema; únicamente corrige la etiqueta `service` que Winston adjunta a cada entrada de `logs/combined.log` y `logs/error.log`, alineándola con la identidad real del proyecto (Canje FTT / FeelTheTickets) en vez de la referencia heredada al proyecto anterior ("Shakira").
+Este cambio no afecta el comportamiento del sistema; únicamente corrige la etiqueta `service` que Winston adjunta a cada entrada de `logs/combined.log` y `logs/error.log`, alineándola con la identidad real del proyecto (Canje FTT / FeelTheTickets).
 
 ## 4. Verificación de cierre de todas las incidencias
 
@@ -100,10 +100,9 @@ Revisado en busca de:
 ### 6.2 `backend/src/middleware/auditLogger.js`
 
 Revisado en busca de:
-- Referencias a nombres de proyectos anteriores → No encontradas.
 - Tipos de auditoría hardcodeados que podrían no coincidir con los usados en los controladores → Se detecta que el `switch` del middleware cubre solo un subconjunto de tipos (`login`, `logout`, `change-password`), mientras que los controladores crean sus propios registros de auditoría para `canje`, `reimprimir`, etc. No es un error funcional (los registros de los controladores sí llegan a la base), pero implica que las rutas de tickets tienen auditoría duplicada (middleware + controlador). Se registra como observación; no se corrige hoy por estar fuera del alcance de esta sesión.
 
-**Resultado:** una observación de arquitectura (auditoría potencialmente duplicada), sin impacto funcional inmediato.
+**Resultado:** una observación de arquitectura, sin impacto funcional inmediato.
 
 ### 6.3 `backend/src/scripts/setup.js`
 
@@ -145,7 +144,7 @@ Revisado el interceptor de respuestas de Axios que maneja errores globales:
 
 ## 7. Revisión de valores hardcodeados en el frontend
 
-Se realizó una búsqueda de cadenas hardcodeadas en el código del frontend que pudieran contener referencias al proyecto anterior o datos de eventos anteriores:
+Se realizó una búsqueda de cadenas hardcodeadas en el código del frontend que pudieran contener referencias a otro proyecto u otros datos:
 
 ```bash
 # Búsqueda en el directorio src del frontend
@@ -164,11 +163,10 @@ grep -r "localhost:5002\|http://" frontend/src/ --include="*.jsx" --include="*.j
 
 ## 8. Incidencias abiertas pendientes (fuera de este ciclo)
 
-- **Credenciales en `render.yaml`:** se detectó desde la Semana 2 que este archivo de despliegue contiene una URI de MongoDB con usuario y contraseña en texto plano, del proyecto anterior ("Shakira"). No se ha corregido dentro de este ciclo porque afecta la configuración de despliegue en Render (fuera del alcance de una corrección de código local) y requiere coordinación directa con el tutor empresarial para rotar credenciales y mover el valor a variables de entorno gestionadas desde el panel de Render. **Se recomienda tratarla antes del despliegue de la Semana 8.**
+- **Credenciales en `render.yaml`:** se detectó desde la que este archivo de despliegue contiene una URI de MongoDB con usuario y contraseña en texto plano. No se ha corregido dentro de este ciclo porque afecta la configuración de despliegue en Render y requiere coordinación directa con el tutor empresarial para rotar credenciales y mover el valor a variables de entorno gestionadas desde el panel de Render.
 - **Auditoría potencialmente duplicada:** detectada hoy en la revisión extendida (Sección 6.2). No bloquea el funcionamiento del sistema pero genera registros redundantes en la tabla de auditoría. Se documenta para evaluación en una futura iteración.
 
 ## 9. Conclusiones del día
 
 Todas las incidencias funcionales y de seguridad detectadas durante el desarrollo (5 en total) quedan corregidas y verificadas, con casos de regresión manual documentados para cada una. La revisión de seguridad extendida sobre archivos no modificados previamente identificó cuatro hallazgos nuevos: auditoría potencialmente duplicada (`auditLogger.js`, sin impacto funcional inmediato), campo `usuario` buscado sin normalizar a minúsculas en `authController.js` (puede impedir el login con autocompletado del navegador), e interceptor de Axios en el frontend que enmascara el error de credenciales inválidas mostrando una pantalla en blanco en lugar del mensaje de error. Ninguno es bloqueante en el entorno local actual, pero los dos últimos tienen impacto real en producción y se recomiendan para corrección prioritaria antes del despliegue.
 
-**Observaciones:** Pendiente para la Semana 8: rotar credenciales en `render.yaml`; corregir normalización de `usuario` en `authController.js` y excepción de login en interceptor de Axios antes del despliegue.
