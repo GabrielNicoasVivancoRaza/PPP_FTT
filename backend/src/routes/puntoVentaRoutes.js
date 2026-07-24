@@ -13,6 +13,11 @@ const {
   getLocalidadesDisponibles
 } = require('../controllers/puntoVentaController');
 const { auth, authorize } = require('../middleware/auth');
+const { selectCollection } = require('../middleware/collectionSelector');
+
+// Usar la misma colección activa que /api/tickets (evita divergencia de datos
+// entre ambos routers, ver Día 44 de evidencias de pasantía)
+router.use(selectCollection);
 
 // Ruta para obtener localidades disponibles (para seleccionar en formulario)
 router.get('/localidades/disponibles', auth, getLocalidadesDisponibles);

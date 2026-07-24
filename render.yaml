@@ -18,7 +18,7 @@ services:
       - key: DEFAULT_PASSWORD
         value: FTT2025
       - key: CORS_ORIGIN
-        value: https://feelthecanjefttweb.onrender.com
+        value: https://shakira-frontend-cisn.onrender.com
 
   # Frontend Service  
   - type: web
@@ -40,10 +40,10 @@ services:
     routes:
       - type: rewrite
         source: /api/*
-        destination: https://feelthecanjeftt.onrender.com/api/:splat
+        destination: https://shakira-backend-dioy.onrender.com/api/:splat
       - type: rewrite
         source: /*
         destination: /index.html
     envVars:
       - key: VITE_API_URL
-        value: https://feelthecanjeftt.onrender.com
+        value: https://shakira-backend-dioy.onrender.com

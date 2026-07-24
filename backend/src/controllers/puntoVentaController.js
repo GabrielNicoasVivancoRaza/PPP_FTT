@@ -180,6 +180,9 @@ const getTicketsByPuntoVenta = async (req, res) => {
     const { id } = req.params;
     const { page = 1, limit = 50, search = '', seatSearch = '', ticketIdSearch = '', sortBy = '', sortOrder = 'asc' } = req.query;
 
+    // Usar el modelo de la colección activa (misma que /api/tickets)
+    const TicketModel = req.TicketModel || Ticket;
+
     const puntoVenta = await PuntoVenta.findById(id);
     if (!puntoVenta) {
       return res.status(404).json({
@@ -214,7 +217,7 @@ const getTicketsByPuntoVenta = async (req, res) => {
           ]
         };
         
-        const testCount = await Ticket.countDocuments(textSearchQuery);
+        const testCount = await TicketModel.countDocuments(textSearchQuery);
         if (testCount > 0) {
           query = textSearchQuery;
         } else {
@@ -296,19 +299,19 @@ const getTicketsByPuntoVenta = async (req, res) => {
 
     // Ejecutar consultas en paralelo para mejor performance
     const [tickets, total] = await Promise.all([
-      Ticket.find(query)
+      TicketModel.find(query)
         .populate('usuarioResponsable', 'nombre usuario email')
         .skip(skip)
         .limit(limitNum)
         .sort(sortObj)
         .maxTimeMS(10000) // Timeout de 10 segundos para prevenir cuelgues
         .lean(), // usar lean() para mejor performance
-      Ticket.countDocuments(query).maxTimeMS(5000) // Timeout de 5 segundos para count
+      TicketModel.countDocuments(query).maxTimeMS(5000) // Timeout de 5 segundos para count
     ]);
 
     res.set({
       'Cache-Control': 'no-cache, no-store, must-revalidate',
-      'Pragma': 'no-cache', 
+      'Pragma': 'no-cache',
       'Expires': '0',
       'Last-Modified': new Date().toUTCString(),
       'X-Timestamp': new Date().toISOString()
@@ -342,6 +345,9 @@ const getEstadisticasPuntoVenta = async (req, res) => {
   try {
     const { id } = req.params;
 
+    // Usar el modelo de la colección activa (misma que /api/tickets)
+    const TicketModel = req.TicketModel || Ticket;
+
     const puntoVenta = await PuntoVenta.findById(id);
     if (!puntoVenta) {
       return res.status(404).json({
@@ -358,12 +364,12 @@ const getEstadisticasPuntoVenta = async (req, res) => {
     const query = { $or: localidadFilters };
 
     // Contar total de tickets
-    const totalTickets = await Ticket.countDocuments(query);
+    const totalTickets = await TicketModel.countDocuments(query);
 
     // Estadísticas por localidad
     const estadisticasPorLocalidad = await Promise.all(
       puntoVenta.localidades.map(async (localidad) => {
-        const count = await Ticket.countDocuments({
+        const count = await TicketModel.countDocuments({
           'Ticket': { $regex: localidad, $options: 'i' }
         });
         return {
@@ -395,7 +401,10 @@ const getEstadisticasPuntoVenta = async (req, res) => {
 const getTicketsForStaff = async (req, res) => {
   try {
     const { page = 1, limit = 50, search = '', seatSearch = '', ticketIdSearch = '', sortBy = '', sortOrder = 'asc' } = req.query;
-    
+
+    // Usar el modelo de la colección activa (misma que /api/tickets)
+    const TicketModel = req.TicketModel || Ticket;
+
     // El staff solo puede ver tickets relacionados con su punto de trabajo
     const userPuntoTrabajo = req.user.puntoTrabajo;
     
@@ -486,14 +495,14 @@ const getTicketsForStaff = async (req, res) => {
 
     // Ejecutar consultas en paralelo
     const [tickets, total] = await Promise.all([
-      Ticket.find(query)
+      TicketModel.find(query)
         .populate('usuarioResponsable', 'nombre usuario email')
         .skip(skip)
         .limit(limitNum)
         .sort(sortObj)
         .maxTimeMS(10000) // Timeout de 10 segundos
         .lean(),
-      Ticket.countDocuments(query).maxTimeMS(5000) // Timeout de 5 segundos
+      TicketModel.countDocuments(query).maxTimeMS(5000) // Timeout de 5 segundos
     ]);
 
     res.set({
@@ -534,6 +543,9 @@ const checkTicketsChanges = async (req, res) => {
     const { id } = req.params;
     const { lastCheckTime } = req.query;
 
+    // Usar el modelo de la colección activa (misma que /api/tickets)
+    const TicketModel = req.TicketModel || Ticket;
+
     const puntoVenta = await PuntoVenta.findById(id).lean(); // usar lean para mejor performance
     if (!puntoVenta) {
       return res.status(404).json({
@@ -556,8 +568,8 @@ const checkTicketsChanges = async (req, res) => {
 
     // Ejecutar ambas queries en paralelo con timeouts
     const [modifiedCount, stats] = await Promise.all([
-      Ticket.countDocuments(query).maxTimeMS(3000), // Timeout de 3 segundos
-      Ticket.aggregate([
+      TicketModel.countDocuments(query).maxTimeMS(3000), // Timeout de 3 segundos
+      TicketModel.aggregate([
         { $match: { $or: localidadFilters } },
         {
           $group: {
@@ -605,6 +617,9 @@ const checkTicketsChangesForStaff = async (req, res) => {
   try {
     const { lastCheckTime } = req.query;
 
+    // Usar el modelo de la colección activa (misma que /api/tickets)
+    const TicketModel = req.TicketModel || Ticket;
+
     // Obtener el punto de trabajo del usuario
     const userPuntoTrabajo = req.user.puntoTrabajo;
     if (!userPuntoTrabajo) {
@@ -641,8 +656,8 @@ const checkTicketsChangesForStaff = async (req, res) => {
 
     // Ejecutar ambas queries en paralelo con timeouts
     const [modifiedCount, stats] = await Promise.all([
-      Ticket.countDocuments(query).maxTimeMS(3000), // Timeout de 3 segundos
-      Ticket.aggregate([
+      TicketModel.countDocuments(query).maxTimeMS(3000), // Timeout de 3 segundos
+      TicketModel.aggregate([
         { $match: { $or: localidadFilters } },
         {
           $group: {
@@ -688,8 +703,11 @@ const checkTicketsChangesForStaff = async (req, res) => {
 // Obtener localidades disponibles (del CSV)
 const getLocalidadesDisponibles = async (req, res) => {
   try {
+    // Usar el modelo de la colección activa (misma que /api/tickets)
+    const TicketModel = req.TicketModel || Ticket;
+
     // Extraer localidades únicas de la columna 'Seat' de los tickets
-    const localidades = await Ticket.distinct('Seat');
+    const localidades = await TicketModel.distinct('Seat');
     
     // Ordenar alfabéticamente y filtrar vacíos
     const localidadesOrdenadas = localidades
