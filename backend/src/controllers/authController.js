@@ -23,8 +23,8 @@ const login = async (req, res) => {
       });
     }
 
-    // Buscar usuario
-    const user = await User.findOne({ usuario }).select('+password');
+    // Buscar usuario (normalizar igual que el schema: lowercase + trim)
+    const user = await User.findOne({ usuario: usuario.trim().toLowerCase() }).select('+password');
     
     if (!user || !user.activo) {
       return res.status(401).json({

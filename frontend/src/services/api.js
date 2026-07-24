@@ -109,8 +109,10 @@ api.interceptors.response.use(
       fullURL: error.config?.baseURL + error.config?.url
     });
 
-    if (error.response?.status === 401) {
-      // Limpiar cache y datos de usuario
+    const isLoginRequest = error.config?.url?.includes('/auth/login');
+
+    if (error.response?.status === 401 && !isLoginRequest) {
+      // Limpiar cache y datos de usuario (sesión expirada / token inválido)
       cache.clear();
       localStorage.removeItem('token');
       localStorage.removeItem('user');
