@@ -6,7 +6,8 @@ import { FTT_LOGO } from '../assets/fttLogo';
 const ROLE_INFO = {
   jefe: { label: 'Jefe', className: 'role-badge-jefe' },
   staff: { label: 'Staff', className: 'role-badge-staff' },
-  impresor: { label: 'Impresor', className: 'role-badge-impresor' }
+  impresor_solo: { label: 'Impresor', className: 'role-badge-impresor_solo' },
+  impresor_cola: { label: 'Impresor (Cola)', className: 'role-badge-impresor_cola' }
 };
 
 const Navigation = () => {
@@ -91,17 +92,49 @@ const Navigation = () => {
                     <i className="fas fa-shield-alt me-2"></i>Auditoría
                   </button>
                 </li>
+                <li className="nav-item">
+                  <button
+                    className={navLinkClass('/impresion-config')}
+                    onClick={() => navigate('/impresion-config')}
+                  >
+                    <i className="fas fa-print me-2"></i>Impresión
+                  </button>
+                </li>
               </>
             )}
 
-            <li className="nav-item">
-              <button
-                className={navLinkClass('/tickets')}
-                onClick={() => navigate('/tickets')}
-              >
-                <i className="fas fa-ticket-alt me-2"></i>Tickets
-              </button>
-            </li>
+            {(role === 'jefe' || role === 'staff' || role === 'impresor_solo') && (
+              <li className="nav-item">
+                <button
+                  className={navLinkClass('/tickets')}
+                  onClick={() => navigate('/tickets')}
+                >
+                  <i className="fas fa-ticket-alt me-2"></i>Tickets
+                </button>
+              </li>
+            )}
+
+            {role === 'impresor_cola' && (
+              <li className="nav-item">
+                <button
+                  className={navLinkClass('/cola-impresion')}
+                  onClick={() => navigate('/cola-impresion')}
+                >
+                  <i className="fas fa-print me-2"></i>Cola de Impresión
+                </button>
+              </li>
+            )}
+
+            {(role === 'jefe' || role === 'impresor_cola') && (
+              <li className="nav-item">
+                <button
+                  className={navLinkClass('/impresos')}
+                  onClick={() => navigate('/impresos')}
+                >
+                  <i className="fas fa-check-circle me-2"></i>Impresos
+                </button>
+              </li>
+            )}
           </ul>
 
           {/* Right user menu */}

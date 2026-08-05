@@ -66,17 +66,41 @@ class SocketService {
     return this.socket;
   }
 
+  // Nota: solo se valida this.socket (no this.isConnected). socket.io-client
+  // guarda en buffer los emit() hechos antes de que la conexión termine de
+  // establecerse y los envía apenas conecta, así que no hace falta esperar
+  // al evento 'connect' para llamar a estos métodos justo después de connect().
   joinPuntoVenta(puntoVentaId) {
-    if (this.socket && this.isConnected) {
+    if (this.socket) {
       console.log('📍 Uniéndose a sala punto-venta:', puntoVentaId);
       this.socket.emit('join-punto-venta', puntoVentaId);
     }
   }
 
   joinStaff(puntoTrabajoNombre) {
-    if (this.socket && this.isConnected) {
+    if (this.socket) {
       console.log('👤 Uniéndose a sala staff:', puntoTrabajoNombre);
       this.socket.emit('join-staff', puntoTrabajoNombre);
+    }
+  }
+
+  joinImpresores() {
+    if (this.socket) {
+      console.log('🖨️ Uniéndose a sala de impresores');
+      this.socket.emit('join-impresores');
+    }
+  }
+
+  joinScanSession(sessionCode) {
+    if (this.socket) {
+      console.log('📷 Uniéndose a sesión de escaneo:', sessionCode);
+      this.socket.emit('join-scan-session', sessionCode);
+    }
+  }
+
+  emitScanDetected(sessionCode, code) {
+    if (this.socket) {
+      this.socket.emit('scan-detected', { sessionCode, code });
     }
   }
 

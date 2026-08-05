@@ -1,6 +1,16 @@
 const Ticket = require('../models/Ticket');
 const AuditLog = require('../models/AuditLog');
+const PrinterSettings = require('../models/PrinterSettings');
+const { createOrExtendPrintRequest } = require('./printRequestController');
+const { getUnprintedTransactionTicketIds, markTransactionPrinted, emitTicketUpdates } = require('../utils/printHelpers');
+const { propagateCanjeToTransaction } = require('../utils/canjeHelpers');
 const { isValidPhone, isValidName } = require('../utils/validators');
+
+// Resuelve el color configurado para un tipo de ticket (campo "Ticket")
+const resolveColor = (ticketColors, tipo) => {
+  const entry = ticketColors.find(tc => tc.tipo === tipo);
+  return entry ? entry.color : null;
+};
 
 // @desc    Obtener todos los tickets con filtros
 // @route   GET /api/tickets
@@ -58,16 +68,17 @@ const getTickets = async (req, res) => {
       Object.assign(query, filters[0]);
     }
 
-    // Filtro por punto de trabajo (para staff)
-    if (req.user.rol === 'staff' && req.user.puntoTrabajo) {
+    // Filtro por punto de trabajo (para staff / impresor_solo)
+    if ((req.user.rol === 'staff' || req.user.rol === 'impresor_solo') && req.user.puntoTrabajo) {
       query.puntoTrabajo = req.user.puntoTrabajo;
     } else if (puntoTrabajo && req.user.rol === 'jefe') {
       query.puntoTrabajo = puntoTrabajo;
     }
 
-    // Filtro por estado de canje
+    // Filtro por estado de canje. Usar $ne:true (no "false") para incluir
+    // tickets importados sin el campo "canjeado" definido en Mongo.
     if (impreso !== undefined) {
-      query.canjeado = impreso === 'true';
+      query.canjeado = impreso === 'true' ? true : { $ne: true };
     }
 
     const sort = {};
@@ -281,19 +292,19 @@ const reprintTicket = async (req, res) => {
   }
 };
 
-// @desc    Obtener tickets por transaction ID
+// @desc    Obtener tickets por transaction ID (incluye el total de tickets asociados)
 // @route   GET /api/tickets/transaction/:transactionId
-// @access  Private
+// @access  Private (jefe, staff, impresor_solo, impresor_cola)
 const getTicketsByTransaction = async (req, res) => {
   try {
     const { transactionId } = req.params;
 
     // Usar el modelo de la colección activa
     const TicketModel = req.TicketModel || Ticket;
-    
-    const tickets = await TicketModel.find({ transactionId })
+
+    const tickets = await TicketModel.find({ 'Transaction ID': transactionId })
       .populate('usuarioResponsable', 'nombre usuario')
-      .sort({ seat: 1 });
+      .sort({ 'Seat': 1 });
 
     if (tickets.length === 0) {
       return res.status(404).json({
@@ -304,11 +315,59 @@ const getTicketsByTransaction = async (req, res) => {
 
     res.json({
       success: true,
-      tickets
+      tickets,
+      count: tickets.length
     });
 
   } catch (error) {
     console.error('Error al obtener tickets por transacción:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+};
+
+// @desc    Buscar un ticket por su código de barras/QR (campo "Barcode Data")
+// Se usa desde el escáner (/escanearTicket). Incluye cuántos tickets tiene
+// asociados la transacción, igual que getTicketsByTransaction.
+// @route   GET /api/tickets/barcode/:barcodeData
+// @access  Private (jefe, staff, impresor_solo, impresor_cola)
+const getTicketByBarcode = async (req, res) => {
+  try {
+    const { barcodeData } = req.params;
+
+    if (!barcodeData || !barcodeData.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Código de barras vacío'
+      });
+    }
+
+    // Usar el modelo de la colección activa
+    const TicketModel = req.TicketModel || Ticket;
+
+    const ticket = await TicketModel.findOne({ 'Barcode Data': barcodeData.trim() })
+      .populate('usuarioResponsable', 'nombre usuario email');
+
+    if (!ticket) {
+      return res.status(404).json({
+        success: false,
+        message: 'No se encontró ningún ticket con ese código'
+      });
+    }
+
+    // Contar cuántos tickets tiene asociados la misma transacción
+    const transactionCount = await TicketModel.countDocuments({ 'Transaction ID': ticket['Transaction ID'] });
+
+    res.json({
+      success: true,
+      ticket,
+      transactionCount
+    });
+
+  } catch (error) {
+    console.error('Error al buscar ticket por código de barras:', error);
     res.status(500).json({
       success: false,
       message: 'Error interno del servidor'
@@ -489,7 +548,7 @@ const canjeTicket = async (req, res) => {
     ticket.puntoCanje = req.user.puntoTrabajo;
     ticket.quienRetira = quienRetira;
     ticket.celular = celular;
-    
+
     // Solo establecer campos adicionales si es "Otro"
     if (quienRetira === 'Otro') {
       ticket.parentesco = parentesco;
@@ -500,7 +559,62 @@ const canjeTicket = async (req, res) => {
       ticket.quienOtro = undefined;
     }
 
+    // Rol impresor_solo: canjea e imprime en una sola acción
+    const printerSettings = await PrinterSettings.getSettings();
+    if (printerSettings.enabled && req.user.rol === 'impresor_solo') {
+      ticket.impreso = true;
+      ticket.fechaImpresion = new Date();
+    }
+
     await ticket.save();
+
+    const io = req.app.get('io');
+    let ticketsImpresosTransaccion = 0;
+
+    // Propagar la información de canje (quién retira, celular, etc.) a los
+    // demás tickets de la MISMA transacción que todavía no estén canjeados,
+    // ya que se retiran/entregan todos juntos, no ticket por ticket
+    const otrosCanjeados = await propagateCanjeToTransaction(TicketModel, ticket['Transaction ID'], {
+      usuarioId: req.user._id,
+      puntoTrabajo: req.user.puntoTrabajo,
+      quienRetira,
+      celular,
+      parentesco,
+      quienOtro
+    });
+    const otrosCanjeadosSinActual = otrosCanjeados.filter(t => t['Ticket ID'] !== ticket['Ticket ID']);
+    emitTicketUpdates(io, otrosCanjeadosSinActual, 'canje-transaccion');
+
+    // Rol impresor_solo: propagar impresión a TODOS los tickets de la misma
+    // transacción y tipo (la impresión en SquadUp es por transacción, no
+    // por ticket individual), hayan sido canjeados o no todavía
+    if (printerSettings.enabled && req.user.rol === 'impresor_solo') {
+      const afectados = await markTransactionPrinted(TicketModel, ticket['Transaction ID'], ticket['Ticket'], req.user.puntoTrabajo);
+      ticketsImpresosTransaccion = afectados.length;
+      const otros = afectados.filter(t => t['Ticket ID'] !== ticket['Ticket ID']);
+      emitTicketUpdates(io, otros, 'impresion-transaccion');
+    }
+
+    // Rol staff: encolar solicitud de impresión para impresor_cola con TODOS
+    // los tickets de la transacción + tipo (no solo el que se acaba de
+    // canjear), ya que se imprimen todos juntos
+    if (printerSettings.enabled && req.user.rol === 'staff') {
+      const tipo = ticket['Ticket'];
+      const ticketIdsTransaccion = await getUnprintedTransactionTicketIds(TicketModel, ticket['Transaction ID'], tipo);
+      // Si no queda nada por imprimir (p. ej. otro impresor ya imprimió toda
+      // la transacción antes de este canje), no hace falta crear solicitud
+      if (ticketIdsTransaccion.length > 0) {
+        await createOrExtendPrintRequest({
+          transactionId: ticket['Transaction ID'],
+          ticketIds: ticketIdsTransaccion,
+          tipos: tipo ? [tipo] : [],
+          color: resolveColor(printerSettings.ticketColors, tipo),
+          puntoTrabajo: req.user.puntoTrabajo,
+          usuarioId: req.user._id,
+          io
+        });
+      }
+    }
 
     // Crear log de auditoría de forma segura
     try {
@@ -510,13 +624,22 @@ const canjeTicket = async (req, res) => {
         celular,
         puntoTrabajo: req.user.puntoTrabajo || 'No asignado'
       };
-      
+
       // Solo incluir campos adicionales en el log si es "Otro"
       if (quienRetira === 'Otro') {
         auditDetails.parentesco = parentesco;
         auditDetails.quienOtro = quienOtro;
       }
-      
+
+      if (ticket.impreso) {
+        auditDetails.impreso = true;
+        auditDetails.ticketsImpresosTransaccion = ticketsImpresosTransaccion;
+      }
+
+      if (otrosCanjeadosSinActual.length > 0) {
+        auditDetails.ticketsCanjeadosTransaccion = otrosCanjeados.length;
+      }
+
       await AuditLog.create({
         tipo: 'canje',
         usuario: req.user._id,
@@ -535,7 +658,6 @@ const canjeTicket = async (req, res) => {
     await ticket.populate('usuarioResponsable', 'nombre usuario email');
 
     // Emitir evento de Socket.IO para actualización en tiempo real
-    const io = req.app.get('io');
     if (io) {
       // Emitir a todos los usuarios del mismo punto de venta
       if (ticket.puntoVenta) {
@@ -560,6 +682,10 @@ const canjeTicket = async (req, res) => {
       success: true,
       message: 'Ticket canjeado exitosamente',
       ticket,
+      data: {
+        ticketsTransaccion: otrosCanjeados.length,
+        transactionId: ticket['Transaction ID']
+      },
       timestamp: new Date().toISOString()
     });
 
@@ -665,6 +791,13 @@ const bulkCanjeTickets = async (req, res) => {
       updateData.quienOtro = quienOtro;
     }
 
+    // Rol impresor_solo: canjea e imprime en una sola acción
+    const printerSettings = await PrinterSettings.getSettings();
+    if (printerSettings.enabled && req.user.rol === 'impresor_solo') {
+      updateData.impreso = true;
+      updateData.fechaImpresion = new Date();
+    }
+
     // Actualizar solo tickets no canjeados en una operación bulk
     const bulkOps = ticketsToRedeem.map(ticket => ({
       updateOne: {
@@ -674,6 +807,26 @@ const bulkCanjeTickets = async (req, res) => {
     }));
 
     const bulkResult = await TicketModel.bulkWrite(bulkOps);
+
+    // Propagar la información de canje a otros tickets de las MISMAS
+    // transacciones que no fueron seleccionados explícitamente en este lote,
+    // ya que se retiran/entregan todos juntos, no ticket por ticket
+    const transaccionesUnicas = [...new Set(ticketsToRedeem.map(t => t['Transaction ID']))];
+    const seleccionadosSet = new Set(ticketIds);
+    const ticketsPropagadosExtra = [];
+    for (const transactionId of transaccionesUnicas) {
+      const afectados = await propagateCanjeToTransaction(TicketModel, transactionId, {
+        usuarioId: req.user._id,
+        puntoTrabajo: req.user.puntoTrabajo,
+        quienRetira,
+        celular,
+        parentesco,
+        quienOtro
+      });
+      afectados.forEach(t => {
+        if (!seleccionadosSet.has(t['Ticket ID'])) ticketsPropagadosExtra.push(t);
+      });
+    }
 
     // Crear logs de auditoría solo para los tickets canjeados ahora
     const auditLogs = ticketsToRedeem.map(ticket => {
@@ -691,7 +844,11 @@ const bulkCanjeTickets = async (req, res) => {
         auditDetails.parentesco = parentesco;
         auditDetails.quienOtro = quienOtro;
       }
-      
+
+      if (printerSettings.enabled && req.user.rol === 'impresor_solo') {
+        auditDetails.impreso = true;
+      }
+
       return {
         tipo: 'canje_masivo',
         usuario: req.user._id,
@@ -703,6 +860,26 @@ const bulkCanjeTickets = async (req, res) => {
       };
     });
 
+    // Logs de auditoría para los tickets adicionales propagados por transacción
+    if (ticketsPropagadosExtra.length > 0) {
+      const auditLogsPropagados = ticketsPropagadosExtra.map(ticket => ({
+        tipo: 'canje_masivo',
+        usuario: req.user._id,
+        ticketId: ticket['Ticket ID'].toString(),
+        transactionId: ticket['Transaction ID']?.toString(),
+        puntoTrabajo: req.user.puntoTrabajo,
+        detalles: {
+          ticketId: ticket['Ticket ID'],
+          quienRetira,
+          celular,
+          puntoTrabajo: req.user.puntoTrabajo || 'No asignado',
+          propagadoDeTransaccion: true
+        },
+        ip: req.ip || 'Unknown'
+      }));
+      auditLogs.push(...auditLogsPropagados);
+    }
+
     // Insertar logs en batch
     try {
       await AuditLog.insertMany(auditLogs);
@@ -711,12 +888,13 @@ const bulkCanjeTickets = async (req, res) => {
     }
 
     // Obtener tickets actualizados con populate
-    const updatedTickets = await TicketModel.find({ 
+    const updatedTickets = await TicketModel.find({
       'Ticket ID': { $in: ticketIds }
     }).populate('usuarioResponsable', 'nombre usuario email');
 
     // Emitir eventos de Socket.IO
     const io = req.app.get('io');
+    emitTicketUpdates(io, ticketsPropagadosExtra, 'canje-transaccion');
     if (io) {
       updatedTickets.forEach(ticket => {
         if (ticket.puntoVenta) {
@@ -726,7 +904,7 @@ const bulkCanjeTickets = async (req, res) => {
             timestamp: new Date().toISOString()
           });
         }
-        
+
         if (req.user.puntoTrabajo) {
           io.to(`staff-${req.user.puntoTrabajo}`).emit('ticket-updated', {
             action: 'canje',
@@ -737,8 +915,57 @@ const bulkCanjeTickets = async (req, res) => {
       });
     }
 
+    // Rol impresor_solo: propagar impresión a TODOS los tickets de la misma
+    // transacción y tipo (hayan sido canjeados o no), ya que la impresión en
+    // SquadUp es por transacción, no por ticket individual
+    if (printerSettings.enabled && req.user.rol === 'impresor_solo') {
+      const paresUnicos = new Map();
+      ticketsToRedeem.forEach(ticket => {
+        const key = `${ticket['Transaction ID']}||${ticket['Ticket']}`;
+        if (!paresUnicos.has(key)) {
+          paresUnicos.set(key, { transactionId: ticket['Transaction ID'], tipo: ticket['Ticket'] });
+        }
+      });
+
+      for (const { transactionId, tipo } of paresUnicos.values()) {
+        const afectados = await markTransactionPrinted(TicketModel, transactionId, tipo, req.user.puntoTrabajo);
+        emitTicketUpdates(io, afectados, 'impresion-transaccion');
+      }
+    }
+
+    // Rol staff: encolar solicitudes de impresión (una por transacción + tipo)
+    // con TODOS los tickets de esa transacción/tipo, no solo los canjeados
+    // en este lote, ya que se imprimen todos juntos
+    if (printerSettings.enabled && req.user.rol === 'staff') {
+      const paresUnicos = new Map();
+      ticketsToRedeem.forEach(ticket => {
+        const key = `${ticket['Transaction ID']}||${ticket['Ticket']}`;
+        if (!paresUnicos.has(key)) {
+          paresUnicos.set(key, { transactionId: ticket['Transaction ID'], tipo: ticket['Ticket'] });
+        }
+      });
+
+      for (const { transactionId, tipo } of paresUnicos.values()) {
+        const ticketIdsTransaccion = await getUnprintedTransactionTicketIds(TicketModel, transactionId, tipo);
+        // Si no queda nada por imprimir, no hace falta crear/extender la solicitud
+        if (ticketIdsTransaccion.length === 0) continue;
+        await createOrExtendPrintRequest({
+          transactionId,
+          ticketIds: ticketIdsTransaccion,
+          tipos: tipo ? [tipo] : [],
+          color: resolveColor(printerSettings.ticketColors, tipo),
+          puntoTrabajo: req.user.puntoTrabajo,
+          usuarioId: req.user._id,
+          io
+        });
+      }
+    }
+
     // Mensaje personalizado según resultados
     let message = `${bulkResult.modifiedCount} tickets canjeados exitosamente`;
+    if (ticketsPropagadosExtra.length > 0) {
+      message += ` (+${ticketsPropagadosExtra.length} adicionales de la misma transacción)`;
+    }
     if (alreadyRedeemed.length > 0) {
       message += `. ${alreadyRedeemed.length} ya estaban canjeados`;
     }
@@ -747,6 +974,7 @@ const bulkCanjeTickets = async (req, res) => {
       success: true,
       message,
       data: {
+        ticketsPropagados: ticketsPropagadosExtra.length,
         processed: ticketsToRedeem.length,
         updated: bulkResult.modifiedCount,
         alreadyRedeemed: alreadyRedeemed.length,
@@ -771,6 +999,7 @@ module.exports = {
   printTicket,
   reprintTicket,
   getTicketsByTransaction,
+  getTicketByBarcode,
   getTicketStats,
   canjeTicket,
   bulkCanjeTickets

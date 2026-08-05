@@ -23,8 +23,9 @@ router.use(selectCollection);
 router.get('/localidades/disponibles', auth, getLocalidadesDisponibles);
 
 // Ruta especial para staff - tickets de su punto de trabajo
-router.get('/staff/tickets', auth, authorize('staff', 'impresor'), getTicketsForStaff);
-router.get('/staff/tickets/check-changes', auth, authorize('staff', 'impresor'), checkTicketsChangesForStaff);
+// impresor_solo también usa esta ruta porque opera igual que staff, con impresión incluida
+router.get('/staff/tickets', auth, authorize('staff', 'impresor_solo'), getTicketsForStaff);
+router.get('/staff/tickets/check-changes', auth, authorize('staff', 'impresor_solo'), checkTicketsChangesForStaff);
 
 // Rutas principales
 router.route('/')

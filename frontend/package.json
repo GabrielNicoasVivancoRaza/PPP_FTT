@@ -3,10 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "dependencies": {
+    "@zxing/browser": "^0.2.1",
     "axios": "^1.11.0",
     "bootstrap": "^5.3.0",
     "chart.js": "^4.4.0",
     "date-fns": "^2.30.0",
+    "qrcode": "^1.5.4",
     "react": "^18.2.0",
     "react-bootstrap": "^2.8.0",
     "react-chartjs-2": "^5.2.0",

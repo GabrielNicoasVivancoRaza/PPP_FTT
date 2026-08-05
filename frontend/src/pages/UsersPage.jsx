@@ -8,7 +8,8 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 const ROLE_INFO = {
   jefe: { label: 'Jefe', className: 'role-badge-jefe' },
   staff: { label: 'Staff', className: 'role-badge-staff' },
-  impresor: { label: 'Impresor', className: 'role-badge-impresor' }
+  impresor_solo: { label: 'Impresor', className: 'role-badge-impresor_solo' },
+  impresor_cola: { label: 'Impresor (Cola)', className: 'role-badge-impresor_cola' }
 };
 
 const UsersPage = () => {
@@ -40,7 +41,7 @@ const UsersPage = () => {
       setUsers(response.data.users);
     } catch (error) {
       console.error('Error fetching users:', error);
-      alert('Error al cargar usuarios');
+      Swal.fire('Error', 'Error al cargar usuarios', 'error');
     } finally {
       setLoading(false);
     }
@@ -65,38 +66,38 @@ const UsersPage = () => {
     e.preventDefault();
 
     if (!isValidName(formData.nombre)) {
-      alert('El nombre solo debe contener letras');
+      Swal.fire('Falta información', 'El nombre solo debe contener letras', 'warning');
       return;
     }
 
-    // Validar que si es staff/impresor tenga punto de trabajo
-    if ((formData.rol === 'staff' || formData.rol === 'impresor') && !formData.puntoTrabajo) {
-      alert('Debe seleccionar un punto de trabajo para usuarios staff e impresor');
+    // Todos los roles excepto jefe requieren punto de trabajo
+    if (formData.rol !== 'jefe' && !formData.puntoTrabajo) {
+      Swal.fire('Falta información', 'Debe seleccionar un punto de trabajo', 'warning');
       return;
     }
 
     // Validar que el punto de trabajo seleccionado existe
     if (formData.puntoTrabajo && !puntosVenta.some(p => p.nombre === formData.puntoTrabajo)) {
-      alert('El punto de trabajo seleccionado no es válido. Por favor actualice la lista.');
+      Swal.fire('Punto de trabajo inválido', 'Por favor actualice la lista.', 'warning');
       return;
     }
 
     try {
       if (editingUser) {
         await api.put(`/users/${editingUser._id}`, formData);
-        alert('Usuario actualizado exitosamente');
+        Swal.fire({ title: 'Usuario actualizado', icon: 'success', timer: 1500, showConfirmButton: false });
       } else {
         await api.post('/users', formData);
-        alert('Usuario creado exitosamente');
+        Swal.fire({ title: 'Usuario creado', icon: 'success', timer: 1500, showConfirmButton: false });
       }
-      
+
       setShowModal(false);
       setEditingUser(null);
       setFormData({ nombre: '', usuario: '', rol: 'staff', puntoTrabajo: '' });
       fetchUsers();
     } catch (error) {
       console.error('Error saving user:', error);
-      alert(error.response?.data?.message || 'Error al guardar usuario');
+      Swal.fire('Error', error.response?.data?.message || 'Error al guardar usuario', 'error');
     }
   };
 
@@ -305,11 +306,12 @@ const UsersPage = () => {
                           required
                         >
                           <option value="staff">Staff</option>
-                          <option value="impresor">Impresor</option>
+                          <option value="impresor_solo">Impresor (canjea e imprime él mismo)</option>
+                          <option value="impresor_cola">Impresor (recibe cola de solicitudes)</option>
                         </select>
                       </div>
 
-                      {(formData.rol === 'staff' || formData.rol === 'impresor') && (
+                      {formData.rol !== 'jefe' && (
                         <div className="mb-3">
                           <div className="d-flex justify-content-between align-items-center">
                             <label className="form-label">Punto de Trabajo *</label>
@@ -348,9 +350,14 @@ const UsersPage = () => {
                               No hay puntos de venta disponibles. Debe crear algunos primero en la sección "Puntos de Venta".
                             </small>
                           )}
-                          {puntosVenta.length > 0 && (
+                          {puntosVenta.length > 0 && formData.rol === 'impresor_cola' && (
                             <small className="form-text text-muted">
-                              El staff solo podrá ver tickets de las localidades asociadas a este punto de venta.
+                              La cola de impresión es compartida entre todos los puntos de venta; este punto es solo informativo.
+                            </small>
+                          )}
+                          {puntosVenta.length > 0 && formData.rol !== 'impresor_cola' && (
+                            <small className="form-text text-muted">
+                              Solo podrá ver tickets de las localidades asociadas a este punto de venta.
                             </small>
                           )}
                         </div>

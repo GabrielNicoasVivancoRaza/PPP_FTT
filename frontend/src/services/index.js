@@ -90,6 +90,52 @@ export const ticketService = {
   }
 };
 
+export const printerSettingsService = {
+  // Obtener configuración de impresión (habilitado + colores)
+  getSettings: async () => {
+    const response = await api.get('/printer-settings');
+    return response.data;
+  },
+
+  // Habilitar/deshabilitar la función de impresión (jefe)
+  updateEnabled: async (enabled) => {
+    const response = await api.put('/printer-settings', { enabled });
+    return response.data;
+  },
+
+  // Obtener tipos de ticket detectados (campo "Ticket") (jefe)
+  getTicketTypes: async () => {
+    const response = await api.get('/printer-settings/ticket-types');
+    return response.data;
+  },
+
+  // Actualizar colores por tipo de ticket (jefe)
+  updateColors: async (ticketColors) => {
+    const response = await api.put('/printer-settings/colors', { ticketColors });
+    return response.data;
+  }
+};
+
+export const printRequestService = {
+  // Obtener solicitudes de impresión por estado: pendiente | enviada | completada (impresor_cola, jefe)
+  getQueue: async (estado = 'pendiente', params = {}) => {
+    const response = await api.get('/print-requests', { params: { estado, ...params } });
+    return response.data;
+  },
+
+  // Paso 1: enviar a imprimir una o varias solicitudes (pasan a "enviada")
+  sendToPrint: async (requestIds) => {
+    const response = await api.post('/print-requests/send', { requestIds });
+    return response.data;
+  },
+
+  // Paso 2: confirmar que se imprimieron correctamente (pasan a "completada" / Impresos)
+  confirmPrint: async (requestIds) => {
+    const response = await api.post('/print-requests/confirm', { requestIds });
+    return response.data;
+  }
+};
+
 export const auditService = {
   // Obtener logs de auditoría
   getLogs: async (params = {}) => {

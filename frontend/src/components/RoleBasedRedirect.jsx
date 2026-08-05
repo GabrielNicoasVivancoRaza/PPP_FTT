@@ -16,7 +16,10 @@ const RoleBasedRedirect = () => {
     case 'jefe':
       return <Navigate to="/dashboard" replace />;
     case 'staff':
+    case 'impresor_solo':
       return <Navigate to="/tickets" replace />;
+    case 'impresor_cola':
+      return <Navigate to="/cola-impresion" replace />;
     default:
       return <Navigate to="/tickets" replace />;
   }

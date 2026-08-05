@@ -9,6 +9,7 @@ const {
   printTicket,
   reprintTicket,
   getTicketsByTransaction,
+  getTicketByBarcode,
   getTicketStats,
   canjeTicket,
   bulkCanjeTickets
@@ -46,23 +47,29 @@ router.get('/', auth, getTickets);
 router.get('/stats', auth, authorize('jefe'), getTicketStats);
 
 // @route   GET /api/tickets/transaction/:transactionId
-router.get('/transaction/:transactionId', auth, authorize('jefe'), getTicketsByTransaction);
+// Habilitado para staff, impresor_solo e impresor_cola: necesitan saber
+// cuántos tickets tiene asociados una transacción antes de canjear/imprimir
+router.get('/transaction/:transactionId', auth, authorize('jefe', 'staff', 'impresor_solo', 'impresor_cola'), getTicketsByTransaction);
+
+// @route   GET /api/tickets/barcode/:barcodeData
+// Usado por el escáner (/escanearTicket) para todos los roles operativos
+router.get('/barcode/:barcodeData', auth, authorize('jefe', 'staff', 'impresor_solo', 'impresor_cola'), getTicketByBarcode);
 
 // @route   POST /api/tickets/bulk-canje (DEBE IR ANTES DE RUTAS CON :id)
-// Jefe y Staff pueden realizar canje masivo.
+// Jefe, Staff e impresor_solo pueden realizar canje masivo.
 // Nota: bulkCanjeTickets ya registra su propio log de auditoría (con ticketId/detalles/ip completos),
 // por lo que NO se usa auditLogger aquí para evitar duplicar el registro en Auditoría.
-router.post('/bulk-canje', auth, authorize('jefe', 'staff'), bulkCanjeTickets);
+router.post('/bulk-canje', auth, authorize('jefe', 'staff', 'impresor_solo'), bulkCanjeTickets);
 
 // @route   POST /api/tickets/:id/print
-router.post('/:id/print', auth, authorize('jefe', 'staff'), auditLogger('impresion'), printTicket);
+router.post('/:id/print', auth, authorize('jefe', 'staff', 'impresor_solo'), auditLogger('impresion'), printTicket);
 
 // @route   POST /api/tickets/:id/reprint
-router.post('/:id/reprint', auth, authorize('jefe'), auditLogger('reimpresion'), reprintTicket);
+router.post('/:id/reprint', auth, authorize('jefe', 'impresor_solo', 'impresor_cola'), auditLogger('reimpresion'), reprintTicket);
 
 // @route   POST /api/tickets/:id/canje
 // Nota: canjeTicket ya registra su propio log de auditoría (con ticketId/detalles/ip completos),
 // por lo que NO se usa auditLogger aquí para evitar duplicar el registro en Auditoría.
-router.post('/:id/canje', auth, authorize('jefe', 'staff'), canjeTicket);
+router.post('/:id/canje', auth, authorize('jefe', 'staff', 'impresor_solo'), canjeTicket);
 
 module.exports = router;

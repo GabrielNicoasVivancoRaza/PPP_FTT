@@ -22,10 +22,10 @@ const createUser = async (req, res) => {
       });
     }
 
-    if ((rol === 'staff' || rol === 'impresor') && !puntoTrabajo) {
+    if (rol !== 'jefe' && !puntoTrabajo) {
       return res.status(400).json({
         success: false,
-        message: 'Punto de trabajo es requerido para staff e impresor'
+        message: 'Punto de trabajo es requerido para este rol'
       });
     }
 

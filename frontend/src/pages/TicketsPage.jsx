@@ -1,12 +1,19 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import socketService from '../services/socket';
+import { printerSettingsService } from '../services';
 import { onlyDigits, onlyLetters, isValidPhone, isValidName } from '../utils/validators';
+import Swal from 'sweetalert2';
 import 'bootstrap/dist/css/bootstrap.min.css';
+
+const SQUADUP_PRINT_URL = 'https://www.squadup.com/api/dashboard/payments/print_boca_tickets?ids=';
 
 const TicketsPage = () => {
   const { user, token } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [tickets, setTickets] = useState([]);
   const [puntosVenta, setPuntosVenta] = useState([]);
   const [selectedPuntoVenta, setSelectedPuntoVenta] = useState('');
@@ -25,7 +32,9 @@ const TicketsPage = () => {
   });
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState(null);
-  const [printRequests, setPrintRequests] = useState([]); // Estado de peticiones de impresión
+  const [transactionTicketCount, setTransactionTicketCount] = useState(null); // # tickets de la misma Transaction ID
+  const [printerEnabled, setPrinterEnabled] = useState(false); // ¿Función de impresión activa?
+  const [ticketColors, setTicketColors] = useState([]); // [{ tipo, color }] configurado por el jefe
   const [printForm, setPrintForm] = useState({
     quienRetira: '',
     parentesco: '',
@@ -65,7 +74,34 @@ const TicketsPage = () => {
 
   // Determinar si el usuario es jefe
   const isJefe = user?.role === 'jefe' || user?.rol === 'jefe';
-  
+
+  // Cargar (y mantener en tiempo real) si la función de impresión está activa,
+  // para decidir si un ticket canjeado se muestra en amarillo (pendiente de
+  // imprimir por la cola) o en verde.
+  useEffect(() => {
+    printerSettingsService.getSettings()
+      .then(res => {
+        if (res.success) {
+          setPrinterEnabled(res.data.enabled);
+          setTicketColors(res.data.ticketColors || []);
+        }
+      })
+      .catch(err => console.error('Error al obtener configuración de impresión:', err));
+
+    const onSettingsUpdated = (data) => {
+      setPrinterEnabled(data.enabled);
+      setTicketColors(data.ticketColors || []);
+    };
+    socketService.on('printer-settings-updated', onSettingsUpdated);
+    return () => socketService.off('printer-settings-updated', onSettingsUpdated);
+  }, []);
+
+  // Color configurado por el jefe para un tipo de ticket (campo "Ticket")
+  const getTypeColor = useCallback((tipo) => {
+    const entry = ticketColors.find(tc => tc.tipo === tipo);
+    return entry ? entry.color : null;
+  }, [ticketColors]);
+
   // Función para actualizar un ticket individual en el estado
   const updateTicketInState = useCallback((updatedTicket) => {
     setTickets(prevTickets => {
@@ -570,17 +606,56 @@ const TicketsPage = () => {
     }
   };
 
+  // Consulta cuántos tickets tiene asociados una transacción (para avisar
+  // que el canje/impresión se completa para todos, no solo el seleccionado)
+  const fetchTransactionTicketCount = async (transactionId) => {
+    if (!transactionId) return;
+    setTransactionTicketCount(null);
+    try {
+      const response = await api.get(`/tickets/transaction/${transactionId}`);
+      if (response.data.success) {
+        setTransactionTicketCount(response.data.count ?? response.data.tickets?.length ?? null);
+      }
+    } catch (error) {
+      console.error('Error al obtener tickets de la transacción:', error);
+    }
+  };
+
   const handlePrint = (ticket) => {
     // Abrir modal para realizar canje
     setSelectedTicket(ticket);
     setShowPrintModal(true);
+    fetchTransactionTicketCount(ticket['Transaction ID']);
   };
 
   const handleSendToPrint = async (ticket) => {
     // Función mantenida para compatibilidad - ahora abre modal de canje
     setSelectedTicket(ticket);
     setShowPrintModal(true);
+    fetchTransactionTicketCount(ticket['Transaction ID']);
   };
+
+  // Si venimos de /escanearTicket con un ticket encontrado, abrir directo el
+  // modal correspondiente (canje si falta, o el detalle si ya está canjeado)
+  const scannedProcessedRef = useRef(null);
+  useEffect(() => {
+    const scanned = location.state?.scannedTicket;
+    const scannedAt = location.state?.scannedAt;
+    if (!scanned || scannedProcessedRef.current === scannedAt) return;
+
+    scannedProcessedRef.current = scannedAt;
+
+    if (scanned.canjeado) {
+      setSelectedCanjeInfo(scanned);
+      setShowCanjeInfoModal(true);
+    } else {
+      handlePrint(scanned);
+    }
+
+    // Limpiar el state para que un refresh no vuelva a abrir el modal
+    navigate(location.pathname, { replace: true, state: {} });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state]);
 
   const handlePrintSubmit = async (e) => {
     e.preventDefault();
@@ -589,87 +664,89 @@ const TicketsPage = () => {
     
     // Validaciones del frontend
     if (!printForm.quienRetira) {
-      alert('Debe seleccionar quién retira el ticket');
+      Swal.fire('Falta información', 'Debe seleccionar quién retira el ticket', 'warning');
       return;
     }
-    
+
     if (!printForm.celular) {
-      alert('El número de celular es obligatorio');
+      Swal.fire('Falta información', 'El número de celular es obligatorio', 'warning');
       return;
     }
 
     if (!isValidPhone(printForm.celular)) {
-      alert('El celular debe contener solo números (7 a 15 dígitos)');
+      Swal.fire('Celular inválido', 'El celular debe contener solo números (7 a 15 dígitos)', 'warning');
       return;
     }
 
     if (printForm.quienRetira === 'Otro') {
       if (!printForm.parentesco) {
-        alert('Debe seleccionar el parentesco cuando selecciona "Otro"');
+        Swal.fire('Falta información', 'Debe seleccionar el parentesco cuando selecciona "Otro"', 'warning');
         return;
       }
       if (!printForm.quienOtro) {
-        alert('Debe especificar el nombre de quien retira cuando selecciona "Otro"');
+        Swal.fire('Falta información', 'Debe especificar el nombre de quien retira cuando selecciona "Otro"', 'warning');
         return;
       }
       if (!isValidName(printForm.quienOtro)) {
-        alert('El nombre de quien retira solo debe contener letras');
+        Swal.fire('Nombre inválido', 'El nombre de quien retira solo debe contener letras', 'warning');
         return;
       }
     }
-    
+
+    // Rol impresor_solo: abrir SquadUp de forma síncrona (dentro del gesto del
+    // usuario) para evitar que el navegador bloquee la ventana emergente.
+    if (userRole === 'impresor_solo' && selectedTicket?.['Transaction ID']) {
+      window.open(`${SQUADUP_PRINT_URL}${selectedTicket['Transaction ID']}`, '_blank');
+    }
+
     try {
-      console.log('Iniciando proceso de canje...');
-      console.log('Datos del formulario:', printForm);
-      console.log('Ticket seleccionado:', selectedTicket);
-      
-      if (userRole === 'staff' || userRole === 'jefe') {
+      if (userRole === 'staff' || userRole === 'jefe' || userRole === 'impresor_solo') {
         // Preparar datos del canje
         const canjeData = {
           quienRetira: printForm.quienRetira,
           celular: printForm.celular
         };
-        
+
         // Solo agregar campos adicionales si es "Otro"
         if (printForm.quienRetira === 'Otro') {
           canjeData.parentesco = printForm.parentesco;
           canjeData.quienOtro = printForm.quienOtro;
         }
-        
-        console.log('Enviando datos de canje:', canjeData);
-        console.log('URL del endpoint:', `/tickets/${selectedTicket['Ticket ID']}/canje`);
-        
-        const response = await api.post(`/tickets/${selectedTicket['Ticket ID']}/canje`, canjeData);
-        
-        console.log('Respuesta del servidor:', response.data);
-        alert('Canje realizado exitosamente');
-        
+
+        const canjeResponse = await api.post(`/tickets/${selectedTicket['Ticket ID']}/canje`, canjeData);
+        const ticketsTransaccion = canjeResponse.data?.data?.ticketsTransaccion || 0;
+
+        Swal.fire({
+          title: userRole === 'impresor_solo' ? 'Canjeado e impreso' : 'Canje realizado',
+          text: ticketsTransaccion > 0
+            ? `Se completó la misma información en ${ticketsTransaccion} ticket(s) más de la misma transacción`
+            : undefined,
+          icon: 'success',
+          timer: ticketsTransaccion > 0 ? 2500 : 1500,
+          showConfirmButton: false
+        });
+
         // Invalidar cache para forzar actualización
         if (api.invalidateCache) {
           api.invalidateCache('tickets');
           api.invalidateCache('puntos-venta');
         }
       }
-      
+
       setShowPrintModal(false);
       setPrintForm({ quienRetira: '', parentesco: '', quienOtro: '', celular: '' });
-      
+      setTransactionTicketCount(null);
+
       // Actualización suave inmediata (silenciosa)
       await refreshTicketsData(false);
-      
+
       // Verificación adicional silenciosa después de 2 segundos
       setTimeout(() => {
         refreshTicketsData(false);
       }, 2000);
     } catch (error) {
       console.error('Error en proceso de canje:', error);
-      console.error('Detalles del error:', {
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        data: error.response?.data,
-        message: error.message
-      });
-      
+
       // Mostrar mensaje de error más específico
       let errorMessage = 'Error en el proceso de canje';
       if (error.response?.data?.message) {
@@ -683,15 +760,15 @@ const TicketsPage = () => {
       } else if (error.code === 'NETWORK_ERROR' || !error.response) {
         errorMessage = 'Error de conexión con el servidor';
       }
-      
-      alert(errorMessage);
+
+      Swal.fire('Error', errorMessage, 'error');
     }
   };
 
   const handleReprint = async (ticket, motivo) => {
     try {
       await api.post(`/tickets/${ticket['Ticket ID']}/reprint`, { motivo });
-      alert('Ticket reimpreso exitosamente');
+      Swal.fire({ title: 'Ticket reimpreso', icon: 'success', timer: 1500, showConfirmButton: false });
       // Refrescar tickets
       if (isJefe) {
         if (selectedPuntoVenta) {
@@ -704,38 +781,18 @@ const TicketsPage = () => {
       }
     } catch (error) {
       console.error('Error reprinting ticket:', error);
-      alert(error.response?.data?.message || 'Error al reimprimir ticket');
+      Swal.fire('Error', error.response?.data?.message || 'Error al reimprimir ticket', 'error');
     }
   };
 
   const canPrint = (ticket) => {
     const userRole = user?.role || user?.rol;
-    
-    // Si el ticket ya fue canjeado, no se puede hacer nada más
+
+    // Si el ticket ya fue canjeado, no se puede volver a canjear
     if (ticket.canjeado) return false;
-    
-    // Jefes pueden imprimir directamente sin restricciones (solo si no está canjeado)
-    if (userRole === 'jefe') return true;
-    
-    // Para staff, verificar si ya hay una petición para esta transacción
-    if (userRole === 'staff') {
-      // Si el ticket ya está impreso, no pueden solicitar más impresión
-      if (ticket.impreso) return false;
-      
-      // Verificar si ya hay una petición pendiente para esta transacción
-      const existingRequest = printRequests.find(req => 
-        req.transactionId === ticket['Transaction ID'] && 
-        (req.estado === 'pendiente' || req.estado === 'completada')
-      );
-      
-      // Solo puede imprimir si no hay petición existente
-      return !existingRequest;
-    }
-    
-    // Impresores pueden reimprimir tickets ya impresos (solo si no están canjeados)
-    if (userRole === 'impresor' && ticket.impreso) return true;
-    
-    return false;
+
+    // Jefe, staff e impresor_solo pueden canjear (impresor_solo además imprime al canjear)
+    return userRole === 'jefe' || userRole === 'staff' || userRole === 'impresor_solo';
   };
 
   // Funciones para selección múltiple (solo admin/jefe)
@@ -766,7 +823,7 @@ const TicketsPage = () => {
 
   const handleBulkCanje = () => {
     if (selectedTickets.size === 0) {
-      alert('Debe seleccionar al menos un ticket');
+      Swal.fire('Falta información', 'Debe seleccionar al menos un ticket', 'warning');
       return;
     }
     setShowBulkCanjeModal(true);
@@ -774,35 +831,51 @@ const TicketsPage = () => {
 
   const handleBulkCanjeSubmit = async (e) => {
     e.preventDefault();
-    
+
     // Validaciones
     if (!bulkCanjeForm.quienRetira) {
-      alert('Debe seleccionar quién retira los tickets');
+      Swal.fire('Falta información', 'Debe seleccionar quién retira los tickets', 'warning');
       return;
     }
-    
+
     if (!bulkCanjeForm.celular) {
-      alert('El número de celular es obligatorio');
+      Swal.fire('Falta información', 'El número de celular es obligatorio', 'warning');
       return;
     }
 
     if (!isValidPhone(bulkCanjeForm.celular)) {
-      alert('El celular debe contener solo números (7 a 15 dígitos)');
+      Swal.fire('Celular inválido', 'El celular debe contener solo números (7 a 15 dígitos)', 'warning');
       return;
     }
 
     if (bulkCanjeForm.quienRetira === 'Otro') {
       if (!bulkCanjeForm.parentesco) {
-        alert('Debe seleccionar el parentesco cuando selecciona "Otro"');
+        Swal.fire('Falta información', 'Debe seleccionar el parentesco cuando selecciona "Otro"', 'warning');
         return;
       }
       if (!bulkCanjeForm.quienOtro) {
-        alert('Debe especificar el nombre de quien retira cuando selecciona "Otro"');
+        Swal.fire('Falta información', 'Debe especificar el nombre de quien retira cuando selecciona "Otro"', 'warning');
         return;
       }
       if (!isValidName(bulkCanjeForm.quienOtro)) {
-        alert('El nombre de quien retira solo debe contener letras');
+        Swal.fire('Nombre inválido', 'El nombre de quien retira solo debe contener letras', 'warning');
         return;
+      }
+    }
+
+    const userRole = user?.role || user?.rol;
+
+    // Rol impresor_solo: abrir SquadUp de forma síncrona con todas las
+    // Transaction ID involucradas (unidas por coma) antes de esperar al API.
+    if (userRole === 'impresor_solo') {
+      const transactionIds = [...new Set(
+        tickets
+          .filter(t => selectedTickets.has(t['Ticket ID']))
+          .map(t => t['Transaction ID'])
+          .filter(Boolean)
+      )];
+      if (transactionIds.length > 0) {
+        window.open(`${SQUADUP_PRINT_URL}${transactionIds.join(',')}`, '_blank');
       }
     }
 
@@ -811,7 +884,7 @@ const TicketsPage = () => {
         quienRetira: bulkCanjeForm.quienRetira,
         celular: bulkCanjeForm.celular
       };
-      
+
       if (bulkCanjeForm.quienRetira === 'Otro') {
         canjeData.parentesco = bulkCanjeForm.parentesco;
         canjeData.quienOtro = bulkCanjeForm.quienOtro;
@@ -824,67 +897,48 @@ const TicketsPage = () => {
       });
 
       if (response.data.success) {
-        const { updated, alreadyRedeemed } = response.data.data;
-        let message = `${updated} tickets canjeados exitosamente`;
-        if (alreadyRedeemed > 0) {
-          message += `\n(${alreadyRedeemed} ya estaban canjeados)`;
+        const { updated, alreadyRedeemed, ticketsPropagados } = response.data.data;
+        let texto = userRole === 'impresor_solo'
+          ? `${updated} tickets canjeados e impresos`
+          : `${updated} tickets canjeados`;
+        if (ticketsPropagados > 0) {
+          texto += ` (+${ticketsPropagados} más de la misma transacción)`;
         }
-        alert(message);
-        
+        if (alreadyRedeemed > 0) {
+          texto += ` (${alreadyRedeemed} ya estaban canjeados)`;
+        }
+        Swal.fire({ title: 'Canje masivo exitoso', text: texto, icon: 'success', timer: 2800, showConfirmButton: false });
+
         // Limpiar selección y cerrar modal
         setSelectedTickets(new Set());
         setShowBulkCanjeModal(false);
         setBulkCanjeForm({ quienRetira: '', parentesco: '', quienOtro: '', celular: '' });
-        
+
         // Actualizar tickets SIN resetear filtros
         await refreshTicketsData(true);
       }
     } catch (error) {
       console.error('Error en canje masivo:', error);
-      const errorMsg = error.response?.data?.message || 'Error al canjear tickets';
-      alert(errorMsg);
+      Swal.fire('Error', error.response?.data?.message || 'Error al canjear tickets', 'error');
     }
   };
 
   const getPrintButtonText = (ticket) => {
     const userRole = user?.role || user?.rol;
-    
+
     // Si ya está canjeado, mostrar estado canjeado
     if (ticket.canjeado) {
       return 'Canjeado';
     }
-    
-    if (userRole === 'jefe') {
-      // Jefe puede realizar canje directamente siempre (si no está canjeado)
-      return ticket.impreso ? 'Reimprimir' : 'Realizar Canje';
+
+    if (userRole === 'jefe' || userRole === 'staff') {
+      return 'Realizar Canje';
     }
-    
-    if (userRole === 'staff') {
-      // Verificar si ya hay una petición para esta transacción
-      const existingRequest = printRequests.find(req => 
-        req.transactionId === ticket['Transaction ID']
-      );
-      
-      if (existingRequest) {
-        switch (existingRequest.estado) {
-          case 'pendiente':
-            return 'Canje Pendiente';
-          case 'completada':
-            return 'Ya Canjeado';
-          case 'cancelada':
-            return 'Canje Cancelado';
-          default:
-            return 'En Proceso';
-        }
-      }
-      
-      return ticket.impreso ? 'Ya Impreso' : 'Realizar Canje';
+
+    if (userRole === 'impresor_solo') {
+      return 'Canjear e Imprimir';
     }
-    
-    if (userRole === 'impresor') {
-      return 'Reimprimir';
-    }
-    
+
     return ticket.impreso ? 'Reimprimir' : 'Imprimir';
   };
 
@@ -910,50 +964,30 @@ const TicketsPage = () => {
     }
   };
 
-  // Función para obtener el estado de impresión de un ticket
+  // Función para obtener el estado de impresión de un ticket. La impresión
+  // es por Transaction ID: un ticket puede quedar impreso aunque todavía no
+  // se haya canjeado individualmente (porque otro ticket de su misma
+  // transacción sí se imprimió), por eso 'impreso' y 'canjeado' se evalúan
+  // de forma independiente.
+  // 'completed' (verde) = canjeado + impreso (o impresión no activa)
+  // 'pending' (amarillo) = canjeado, esperando impresión por la cola
+  // 'printed' (azul) = impreso pero aún no canjeado individualmente
   const getTicketPrintStatus = (ticket) => {
-    if (user?.rol === 'staff' || user?.role === 'staff' || user?.rol === 'jefe' || user?.role === 'jefe') {
-      // Buscar por transaction ID en lugar de ticket ID individual
-      const request = printRequests.find(req => req.transactionId === ticket['Transaction ID']);
-      console.log('Buscando transacción:', ticket['Transaction ID']);
-      console.log('Peticiones disponibles:', printRequests.map(r => ({ transactionId: r.transactionId, estado: r.estado })));
-      console.log('Petición encontrada para transacción:', request);
-      
-      if (request) {
-        switch (request.estado) {
-          case 'pendiente':
-            return 'pending'; // Amarillo
-          case 'completada':
-          case 'completado':
-            return 'completed'; // Verde
-          case 'cancelada':
-          case 'cancelado':
-            return 'cancelled'; // Rojo
-          default:
-            return 'normal';
-        }
-      }
-    }
-    return ticket.impreso ? 'printed' : 'normal';
+    if (ticket.canjeado && (ticket.impreso || !printerEnabled)) return 'completed';
+    if (ticket.canjeado) return 'pending';
+    if (ticket.impreso) return 'printed';
+    return 'normal';
   };
 
   // Función para obtener las clases CSS según el estado
   const getRowClasses = (ticket) => {
-    // Prioridad: canjeado > otros estados
-    if (ticket.canjeado) {
-      return 'table-success'; // Verde para canjeados
-    }
-    
-    const status = getTicketPrintStatus(ticket);
-    
-    switch (status) {
+    switch (getTicketPrintStatus(ticket)) {
       case 'pending':
-        return 'table-warning'; // Amarillo
+        return 'table-warning'; // Amarillo: canjeado, esperando impresión
       case 'completed':
+        return 'table-success'; // Verde: canjeado (e impreso, si aplica)
       case 'printed':
-        return 'table-info'; // Azul claro para impresos pero no canjeados
-      case 'cancelled':
-        return 'table-danger'; // Rojo
+        return 'table-info'; // Azul: impreso, pendiente de canje individual
       default:
         return '';
     }
@@ -961,95 +995,32 @@ const TicketsPage = () => {
 
   // Función para obtener información de impresión de un ticket
   const getTicketPrintInfo = (ticket) => {
-    // Prioridad: mostrar información de canje si existe
-    if (ticket.canjeado) {
-      const retiraInfo = ticket.quienRetira === 'Otro' && ticket.quienOtro ? 
-        `${ticket.quienRetira} (${ticket.parentesco || 'N/A'}: ${ticket.quienOtro})` : 
-        ticket.quienRetira || 'N/A';
-      
-      return {
-        estado: 'Canjeado',
-        fecha: ticket.fechaCanje ? new Date(ticket.fechaCanje).toLocaleString('es-ES', {
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit'
-        }) : 'N/A',
-        responsable: ticket.usuarioResponsable?.nombre || ticket.usuarioResponsable?.usuario || 'N/A',
-        quienRetira: retiraInfo,
-        celular: ticket.celular || 'N/A'
-      };
-    }
-    
-    if (ticket.impreso) {
-      const retiraInfo = ticket.quienRetira === 'Otro' && ticket.quienOtro ? 
-        `${ticket.quienRetira} (${ticket.parentesco || 'N/A'}: ${ticket.quienOtro})` : 
-        ticket.quienRetira || 'N/A';
-      
-      return {
-        estado: 'Impreso',
-        fecha: ticket.fechaImpresion ? new Date(ticket.fechaImpresion).toLocaleString('es-ES', {
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit'
-        }) : 'N/A',
-        responsable: ticket.usuarioResponsable?.nombre || ticket.usuarioResponsable?.usuario || 'N/A',
-        quienRetira: retiraInfo,
-        celular: ticket.celular || 'N/A'
-      };
-    }
-    
-    if (user?.rol === 'staff' || user?.role === 'staff' || user?.rol === 'jefe' || user?.role === 'jefe') {
-      // Buscar por transaction ID en lugar de ticket ID individual
-      const request = printRequests.find(req => req.transactionId === ticket['Transaction ID']);
-      if (request) {
-        const retiraInfo = request.quienRetira === 'Otro' && request.quienOtro ? 
-          `${request.quienRetira} (${request.parentesco || 'N/A'}: ${request.quienOtro})` : 
-          request.quienRetira || 'N/A';
-        
-        return {
-          estado: request.estado === 'completada' ? 'Completado' : 
-                 request.estado === 'pendiente' ? 'Pendiente' :
-                 request.estado === 'cancelada' ? 'Cancelado' : 'En proceso',
-          fecha: request.fechaProcesado ? new Date(request.fechaProcesado).toLocaleDateString() : 'N/A',
-          responsable: request.nombreSolicitante || 'N/A',
-          quienRetira: retiraInfo,
-          celular: request.celular || 'N/A'
-        };
-      }
-    }
-    
-    return null;
+    if (!ticket.canjeado && !ticket.impreso) return null;
+
+    const retiraInfo = ticket.quienRetira === 'Otro' && ticket.quienOtro ?
+      `${ticket.quienRetira} (${ticket.parentesco || 'N/A'}: ${ticket.quienOtro})` :
+      ticket.quienRetira || 'N/A';
+
+    let estado;
+    if (ticket.canjeado && printerEnabled && !ticket.impreso) estado = 'Canjeado (pendiente de imprimir)';
+    else if (ticket.canjeado) estado = 'Canjeado';
+    else estado = 'Impreso (pendiente de canje)';
+
+    return {
+      estado,
+      fecha: ticket.fechaCanje ? new Date(ticket.fechaCanje).toLocaleString('es-ES', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      }) : (ticket.fechaImpresion ? new Date(ticket.fechaImpresion).toLocaleString('es-ES') : 'N/A'),
+      responsable: ticket.usuarioResponsable?.nombre || ticket.usuarioResponsable?.usuario || 'N/A',
+      quienRetira: retiraInfo,
+      celular: ticket.celular || 'N/A'
+    };
   };
-
-  // Función para cargar peticiones de impresión (para staff y jefe)
-  // COMENTADO: Función removida - servicio de impresión no está disponible
-  // const fetchPrintRequests = async () => {
-  //   if (user?.rol !== 'staff' && user?.role !== 'staff' && user?.rol !== 'jefe' && user?.role !== 'jefe') return;
-  //   
-  //   try {
-  //     const response = await impresionService.getMyRequests();
-  //     if (response.success) {
-  //       setPrintRequests(response.data.peticiones || []);
-  //     }
-  //   } catch (error) {
-  //     console.error('Error fetching print requests:', error);
-  //   }
-  // };
-
-  // Cargar peticiones de impresión para staff y jefe
-  useEffect(() => {
-    // COMENTADO: fetchPrintRequests no está disponible
-    // if (user?.rol === 'staff' || user?.role === 'staff' || user?.rol === 'jefe' || user?.role === 'jefe') {
-    //   fetchPrintRequests();
-    //   const interval = setInterval(fetchPrintRequests, 30000);
-    //   return () => clearInterval(interval);
-    // }
-  }, [user, tickets]);
 
   return (
     <div className="container-fluid">
@@ -1192,8 +1163,16 @@ const TicketsPage = () => {
 
           {/* Barra de búsqueda */}
           <div className="card mb-4">
-            <div className="card-header">
+            <div className="card-header d-flex justify-content-between align-items-center">
               <h5 className="mb-0">Búsqueda</h5>
+              <button
+                type="button"
+                className="btn btn-outline-dark btn-sm"
+                onClick={() => navigate('/escanearTicket')}
+                title="Buscar un ticket escaneando su código de barras/QR"
+              >
+                <i className="fas fa-qrcode me-1"></i>Escanear
+              </button>
             </div>
             <div className="card-body">
               <div className="row">
@@ -1363,31 +1342,13 @@ const TicketsPage = () => {
                   </div>
                 ) : (
                   <>
-                    {/* Información de resultados y leyenda de colores */}
+                    {/* Información de resultados */}
                     <div className="d-flex justify-content-between align-items-center mb-3">
                       <div>
                         <span className="text-muted">
                           Mostrando {tickets.length} de {pagination.total} tickets
                           {search.trim() && ` (filtrados por "${search}")`}
                         </span>
-                        <div className="mt-1">
-                          <small className="me-3">
-                            <span className="badge bg-success me-1">●</span>
-                            Canjeados
-                          </small>
-                          <small className="me-3">
-                            <span className="badge bg-info me-1">●</span>
-                            Impresos
-                          </small>
-                          <small className="me-3">
-                            <span className="badge bg-warning me-1">●</span>
-                            Pendientes
-                          </small>
-                          <small className="me-3">
-                            <span className="badge bg-danger me-1">●</span>
-                            Cancelados
-                          </small>
-                        </div>
                       </div>
                       <div className="d-flex align-items-center">
                         <span className="badge bg-primary me-2">
@@ -1464,7 +1425,16 @@ const TicketsPage = () => {
                                   <span className="table-tag table-tag-seat">{ticket['Seat']}</span>
                                 </td>
                                 <td>
-                                  <small>{ticket['Ticket']}</small>
+                                  {getTypeColor(ticket['Ticket']) ? (
+                                    <span
+                                      className="badge"
+                                      style={{ backgroundColor: getTypeColor(ticket['Ticket']), color: '#fff' }}
+                                    >
+                                      {ticket['Ticket']}
+                                    </span>
+                                  ) : (
+                                    <small>{ticket['Ticket']}</small>
+                                  )}
                                 </td>
                                 <td>
                                   <small>{ticket['Número de Cédula: '] || ticket['Numero de Cedula:'] || '-'}</small>
@@ -1499,15 +1469,23 @@ const TicketsPage = () => {
                                       ) : (
                                         <button
                                           className="btn btn-warning btn-sm me-1"
-                                          onClick={() => {
+                                          onClick={async () => {
                                             const userRole = user?.role || user?.rol;
-                                            
+
                                             if (userRole === 'staff') {
                                               // Staff usa el modal para reimpresiones también
                                               handleSendToPrint(ticket);
                                             } else {
                                               // Jefe/Impresor reimprimen directamente
-                                              const motivo = prompt('Motivo de reimpresión:');
+                                              const { value: motivo } = await Swal.fire({
+                                                title: 'Motivo de reimpresión',
+                                                input: 'text',
+                                                inputPlaceholder: 'Ingrese el motivo...',
+                                                showCancelButton: true,
+                                                confirmButtonText: 'Reimprimir',
+                                                cancelButtonText: 'Cancelar',
+                                                inputValidator: (value) => !value && 'Debe ingresar un motivo'
+                                              });
                                               if (motivo) {
                                                 handleReprint(ticket, motivo);
                                               }
@@ -1639,12 +1617,12 @@ const TicketsPage = () => {
                 <div className="modal-content">
                   <div className="modal-header">
                     <h5 className="modal-title">
-                      {(user?.role === 'staff' || user?.rol === 'staff') ? 'Realizar Canje' : 'Canje de Ticket'}
+                      {(['staff', 'impresor_solo'].includes(user?.role || user?.rol)) ? 'Realizar Canje' : 'Canje de Ticket'}
                     </h5>
                     <button
                       type="button"
                       className="btn-close"
-                      onClick={() => setShowPrintModal(false)}
+                      onClick={() => { setShowPrintModal(false); setTransactionTicketCount(null); }}
                     ></button>
                   </div>
                   <form onSubmit={handlePrintSubmit}>
@@ -1652,9 +1630,28 @@ const TicketsPage = () => {
                       <div className="alert alert-info">
                         <strong>Ticket:</strong> {`${selectedTicket['First Name']} ${selectedTicket['Last Name']}`}<br />
                         <strong>Asiento:</strong> {selectedTicket['Seat']}<br />
-                        <strong>Ticket ID:</strong> {selectedTicket['Ticket ID']}
+                        <strong>Ticket ID:</strong> {selectedTicket['Ticket ID']}<br />
+                        <strong>Categoría:</strong>{' '}
+                        {getTypeColor(selectedTicket['Ticket']) ? (
+                          <span
+                            className="badge"
+                            style={{ backgroundColor: getTypeColor(selectedTicket['Ticket']), color: '#fff' }}
+                          >
+                            {selectedTicket['Ticket']}
+                          </span>
+                        ) : (
+                          selectedTicket['Ticket']
+                        )}
                       </div>
-                      
+
+                      {transactionTicketCount !== null && transactionTicketCount > 1 && (
+                        <div className="alert alert-warning">
+                          <i className="fas fa-users me-2"></i>
+                          Esta transacción tiene <strong>{transactionTicketCount} tickets</strong> asociados.
+                          Al canjear, se completará esta misma información en todos.
+                        </div>
+                      )}
+
                       <div className="mb-3">
                         <label className="form-label">¿Quién retira? *</label>
                         <select
@@ -1739,12 +1736,12 @@ const TicketsPage = () => {
                       <button
                         type="button"
                         className="btn btn-secondary"
-                        onClick={() => setShowPrintModal(false)}
+                        onClick={() => { setShowPrintModal(false); setTransactionTicketCount(null); }}
                       >
                         Cancelar
                       </button>
                       <button type="submit" className="btn btn-primary">
-                        {(user?.role === 'staff' || user?.rol === 'staff') ? 'Realizar Canje' : 'Canje'}
+                        {(['staff', 'impresor_solo'].includes(user?.role || user?.rol)) ? 'Realizar Canje' : 'Canje'}
                       </button>
                     </div>
                   </form>
@@ -1774,7 +1771,12 @@ const TicketsPage = () => {
                       <div className="alert alert-warning">
                         <i className="fas fa-exclamation-triangle me-2"></i>
                         <strong>Atención:</strong> Está a punto de canjear <strong>{selectedTickets.size} tickets</strong> simultáneamente.
-                        Todos recibirán la misma información de canje.
+                        Todos recibirán la misma información de canje. Si alguno de estos tickets comparte
+                        Transaction ID con otro ticket no seleccionado, esa información también se completará
+                        automáticamente en el ticket faltante.
+                        {(user?.role === 'impresor_solo' || user?.rol === 'impresor_solo') && (
+                          <> También se enviarán a imprimir juntos (impresión masiva).</>
+                        )}
                       </div>
 
                       <div className="card mb-3">
@@ -1791,7 +1793,16 @@ const TicketsPage = () => {
                                     <small>
                                       <strong>{ticket['First Name']} {ticket['Last Name']}</strong><br />
                                       Asiento: <span className="chip-seat"><i className="bi bi-person-square"></i>{ticket['Seat']}</span><br />
-                                      Ticket: <code>{ticket['Ticket ID']}</code>
+                                      Ticket: <code>{ticket['Ticket ID']}</code><br />
+                                      Categoría:{' '}
+                                      {getTypeColor(ticket['Ticket']) ? (
+                                        <span
+                                          className="badge"
+                                          style={{ backgroundColor: getTypeColor(ticket['Ticket']), color: '#fff' }}
+                                        >
+                                          {ticket['Ticket']}
+                                        </span>
+                                      ) : ticket['Ticket']}
                                     </small>
                                   </div>
                                 </div>

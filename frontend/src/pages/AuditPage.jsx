@@ -24,6 +24,8 @@ const AuditPage = () => {
   const tiposLog = [
     'impresion',
     'reimpresion',
+    'impresion_cola',
+    'config_impresion',
     'canje',
     'canje_masivo',
     'login',
@@ -35,6 +37,8 @@ const AuditPage = () => {
   const TIPO_LABELS = {
     impresion: 'Impresión',
     reimpresion: 'Reimpresión',
+    impresion_cola: 'Impresión (Cola)',
+    config_impresion: 'Config. Impresión',
     canje: 'Canje',
     canje_masivo: 'Canje Masivo',
     login: 'Login',
@@ -46,7 +50,8 @@ const AuditPage = () => {
   const ROLE_INFO = {
     jefe: { label: 'Jefe', className: 'role-badge-jefe' },
     staff: { label: 'Staff', className: 'role-badge-staff' },
-    impresor: { label: 'Impresor', className: 'role-badge-impresor' }
+    impresor_solo: { label: 'Impresor', className: 'role-badge-impresor_solo' },
+    impresor_cola: { label: 'Impresor (Cola)', className: 'role-badge-impresor_cola' }
   };
 
   useEffect(() => {
@@ -102,6 +107,8 @@ const AuditPage = () => {
     const classes = {
       impresion: 'table-tag-active',
       reimpresion: 'table-tag-pending',
+      impresion_cola: 'table-tag-active',
+      config_impresion: 'table-tag-pending',
       canje: 'table-tag-active',
       canje_masivo: 'table-tag-info',
       login: 'table-tag-info',
@@ -120,6 +127,11 @@ const AuditPage = () => {
     if (log.detalles.celular) detalles.push(`Tel: ${log.detalles.celular}`);
     if (log.detalles.motivo) detalles.push(`Motivo: ${log.detalles.motivo}`);
     if (log.detalles.usuarioCreado) detalles.push(`Usuario: ${log.detalles.usuarioCreado}`);
+    if (log.detalles.impreso) detalles.push(`Impreso: ${log.detalles.ticketsImpresosTransaccion || 1} ticket(s)`);
+    if (log.detalles.accion) detalles.push(`Acción: ${log.detalles.accion}`);
+    if (log.detalles.ticketsImpresos !== undefined) detalles.push(`Impresos: ${log.detalles.ticketsImpresos}`);
+    if (log.detalles.solicitudes !== undefined) detalles.push(`Solicitudes: ${log.detalles.solicitudes}`);
+    if (log.detalles.colores?.length) detalles.push(`Colores: ${log.detalles.colores.join(', ')}`);
 
     return detalles.join(', ') || '-';
   };

@@ -15,6 +15,8 @@ const userRoutes = require('./routes/users');
 const ticketRoutes = require('./routes/tickets');
 const auditRoutes = require('./routes/audit');
 const puntoVentaRoutes = require('./routes/puntoVentaRoutes');
+const printerSettingsRoutes = require('./routes/printerSettings');
+const printRequestRoutes = require('./routes/printRequests');
 
 const app = express();
 const server = http.createServer(app);
@@ -106,6 +108,8 @@ app.use('/api/users', userRoutes);
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/puntos-venta', puntoVentaRoutes);
+app.use('/api/printer-settings', printerSettingsRoutes);
+app.use('/api/print-requests', printRequestRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -119,7 +123,9 @@ app.get('/', (req, res) => {
       users: '/api/users',
       tickets: '/api/tickets',
       audit: '/api/audit',
-      puntosVenta: '/api/puntos-venta'
+      puntosVenta: '/api/puntos-venta',
+      printerSettings: '/api/printer-settings',
+      printRequests: '/api/print-requests'
     }
   });
 });
@@ -240,6 +246,31 @@ io.on('connection', (socket) => {
   socket.on('join-staff', (puntoTrabajoNombre) => {
     socket.join(`staff-${puntoTrabajoNombre}`);
     console.log(`👤 Socket ${socket.id} se unió a staff-${puntoTrabajoNombre}`);
+  });
+
+  // Unirse a sala de impresores (cola de impresión compartida)
+  socket.on('join-impresores', () => {
+    socket.join('impresores');
+    console.log(`🖨️ Socket ${socket.id} se unió a la sala de impresores`);
+  });
+
+  // Emparejamiento del escáner: la computadora y el celular se unen a la
+  // misma sesión (código aleatorio mostrado como QR) para que el celular
+  // pueda reenviar los códigos que escanea con su cámara
+  socket.on('join-scan-session', (sessionCode) => {
+    if (!sessionCode) return;
+    socket.join(`scan-${sessionCode}`);
+    console.log(`📷 Socket ${socket.id} se unió a scan-${sessionCode}`);
+  });
+
+  // El celular reenvía el código detectado; solo lo reciben los demás
+  // miembros de la sesión (la computadora), no el propio emisor
+  socket.on('scan-detected', ({ sessionCode, code } = {}) => {
+    if (!sessionCode || !code) return;
+    socket.to(`scan-${sessionCode}`).emit('scan-detected', {
+      code,
+      timestamp: new Date().toISOString()
+    });
   });
 
   socket.on('disconnect', () => {

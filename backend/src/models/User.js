@@ -22,12 +22,12 @@ const userSchema = new mongoose.Schema({
   rol: {
     type: String,
     required: true,
-    enum: ['jefe', 'staff']
+    enum: ['jefe', 'staff', 'impresor_solo', 'impresor_cola']
   },
   puntoTrabajo: {
     type: String,
     required: function() {
-      return this.rol === 'staff';
+      return this.rol !== 'jefe';
     },
     trim: true
   },
