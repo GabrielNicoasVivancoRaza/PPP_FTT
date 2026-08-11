@@ -93,6 +93,9 @@ export const AuthProvider = ({ children }) => {
     } finally {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
+      // Desvincular el celular al cerrar sesión, para que la sesión de
+      // escaneo no quede activa para el siguiente usuario del equipo
+      localStorage.removeItem('ftt_scan_session');
       dispatch({ type: 'LOGOUT' });
     }
   };

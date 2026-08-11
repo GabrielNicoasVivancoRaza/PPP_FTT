@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate, useSearchParams, Navigate } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useScanSession } from '../context/ScanSessionContext';
 import api from '../services/api';
 import socketService from '../services/socket';
 import { BrowserMultiFormatReader } from '@zxing/browser';
@@ -10,8 +11,6 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 
 const ROLES_PERMITIDOS = ['jefe', 'staff', 'impresor_solo', 'impresor_cola'];
 const CODE_COOLDOWN_MS = 3000; // evita reprocesar el mismo código repetidamente
-
-const generarCodigoSesion = () => Math.random().toString(36).slice(2, 8).toUpperCase();
 
 // Estilos del cuadro de apuntado (viewfinder) que se superpone al video de
 // la cámara para indicar dónde centrar el código QR
@@ -74,14 +73,24 @@ const ScanFrame = () => (
 const ScanTicketPage = () => {
   const { user, token, isAuthenticated, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const sesionUrl = searchParams.get('sesion');
   const esModoCelular = !!sesionUrl;
   const userRole = user?.role || user?.rol;
 
+  // La sesión de emparejamiento vive en el contexto (persiste entre páginas
+  // y recargas), así el celular se vincula UNA sola vez y sirve para todos
+  // los boletos siguientes. En modo celular el código viene por la URL.
+  const { sessionCode: sessionCodeCtx, activa, iniciarSesion, terminarSesion, regenerarSesion } = useScanSession();
+  const sessionCode = sesionUrl || sessionCodeCtx;
+
   // pantalla: 'elegir' | 'camara-local' | 'camara-remota' | 'celular'
-  const [pantalla, setPantalla] = useState(esModoCelular ? 'celular' : 'elegir');
-  const [sessionCode] = useState(() => sesionUrl || generarCodigoSesion());
+  const [pantalla, setPantalla] = useState(() => {
+    if (esModoCelular) return 'celular';
+    // Si el celular ya está vinculado, entrar directo a la pantalla de la sesión
+    return localStorage.getItem('ftt_scan_session') ? 'camara-remota' : 'elegir';
+  });
   const [buscando, setBuscando] = useState(false);
   const [resultado, setResultado] = useState(null); // { ticket, transactionCount } - vista para impresor_cola
   const [enviados, setEnviados] = useState(0); // # de códigos reenviados desde el celular
@@ -168,24 +177,30 @@ const ScanTicketPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionCode]);
 
-  // --- Modo "camara-remota": la compu genera el QR y espera al celular ---
+  // --- Modo "camara-remota": la compu muestra el QR de emparejamiento ---
+  // Ya NO escucha los escaneos acá: de eso se encarga ScanSessionContext a
+  // nivel de app, para que la sesión siga viva aunque naveguemos a /tickets.
   useEffect(() => {
-    if (pantalla !== 'camara-remota') return;
+    if (pantalla !== 'camara-remota' || esModoCelular) return;
 
-    const url = `${window.location.origin}/escanearTicket?sesion=${sessionCode}`;
+    const codigo = sessionCodeCtx || iniciarSesion();
+    const url = `${window.location.origin}/escanearTicket?sesion=${codigo}`;
+
     if (canvasRef.current) {
       QRCode.toCanvas(canvasRef.current, url, { width: 220, margin: 1 }, (err) => {
         if (err) console.error('Error generando QR:', err);
       });
     }
+  }, [pantalla, esModoCelular, sessionCodeCtx, iniciarSesion]);
 
-    socketService.connect(token);
-    socketService.joinScanSession(sessionCode);
-
-    const onScanDetected = (data) => buscarTicket(data.code);
-    socketService.on('scan-detected', onScanDetected);
-    return () => socketService.off('scan-detected', onScanDetected);
-  }, [pantalla, sessionCode, token, buscarTicket]);
+  // Resultado de un escaneo recibido mientras el rol es impresor_cola
+  useEffect(() => {
+    if (location.state?.scannedResult) {
+      setResultado(location.state.scannedResult);
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state]);
 
   // --- Modo "celular": esta pestaña ES la cámara remota ---
   useEffect(() => {
@@ -200,6 +215,35 @@ const ScanTicketPage = () => {
     setErrorCamara('');
     setResultado(null);
     setPantalla('elegir');
+  };
+
+  const handleTerminarSesion = () => {
+    terminarSesion();
+    setPantalla('elegir');
+    Swal.fire({
+      title: 'Sesión terminada',
+      text: 'El celular quedó desvinculado. Para volver a usarlo hay que emparejarlo de nuevo.',
+      icon: 'info',
+      timer: 2200,
+      showConfirmButton: false
+    });
+  };
+
+  const handleRegenerarSesion = () => {
+    const codigo = regenerarSesion();
+    const url = `${window.location.origin}/escanearTicket?sesion=${codigo}`;
+    if (canvasRef.current) {
+      QRCode.toCanvas(canvasRef.current, url, { width: 220, margin: 1 }, (err) => {
+        if (err) console.error('Error generando QR:', err);
+      });
+    }
+    Swal.fire({
+      title: 'Código nuevo generado',
+      text: 'El celular anterior quedó desvinculado: hay que escanear el QR nuevo.',
+      icon: 'info',
+      timer: 2500,
+      showConfirmButton: false
+    });
   };
 
   // --- Modo celular: pantalla pública, sin necesidad de sesión iniciada ---
@@ -269,8 +313,14 @@ const ScanTicketPage = () => {
               <div className="card-body text-center d-flex flex-column">
                 <i className="fas fa-mobile-alt fa-2x mb-3 text-success"></i>
                 <h5>Usar mi celular como escáner</h5>
-                <p className="text-muted flex-grow-1">Genera un código QR para emparejar tu celular y usar su cámara en vez de la de esta computadora.</p>
-                <button className="btn btn-success" onClick={() => setPantalla('camara-remota')}>Emparejar celular</button>
+                <p className="text-muted flex-grow-1">
+                  {activa
+                    ? 'Ya tienes un celular vinculado: puedes seguir escaneando boletos sin volver a emparejarlo.'
+                    : 'Se empareja una sola vez y queda listo para escanear todos los boletos que necesites.'}
+                </p>
+                <button className="btn btn-success" onClick={() => setPantalla('camara-remota')}>
+                  {activa ? 'Ver sesión activa' : 'Emparejar celular'}
+                </button>
               </div>
             </div>
           </div>
@@ -306,13 +356,35 @@ const ScanTicketPage = () => {
             <button className="btn btn-outline-secondary btn-sm mb-3" onClick={volverAElegir}>
               <i className="fas fa-arrow-left me-1"></i>Volver
             </button>
+
+            <div className="alert alert-success d-inline-block px-4">
+              <i className="fas fa-link me-2"></i>
+              <strong>Sesión activa</strong> — el celular queda vinculado hasta que la termines.
+              Escanea este QR <strong>una sola vez</strong> y después solo apunta al boleto de cada persona.
+            </div>
+
             <h5>Escanea este código con tu celular</h5>
-            <p className="text-muted">Ábrelo con la cámara normal de tu celular (no hace falta iniciar sesión ahí).</p>
+            <p className="text-muted mb-2">Ábrelo con la cámara normal de tu celular (no hace falta iniciar sesión ahí).</p>
             <canvas ref={canvasRef}></canvas>
+
             <div className="mt-3">
               <span className="spinner-border spinner-border-sm me-2" role="status"></span>
-              Esperando que el celular escanee un código...
+              Esperando escaneos del celular... (puedes seguir trabajando en otras pantallas)
             </div>
+
+            <div className="mt-3 d-flex justify-content-center gap-2">
+              <button className="btn btn-outline-danger btn-sm" onClick={handleTerminarSesion}>
+                <i className="fas fa-unlink me-1"></i>Terminar sesión del celular
+              </button>
+              <button className="btn btn-outline-secondary btn-sm" onClick={handleRegenerarSesion}>
+                <i className="fas fa-rotate me-1"></i>Generar código nuevo
+              </button>
+            </div>
+            {sessionCode && (
+              <div className="mt-2">
+                <small className="text-muted">Código de sesión: <code>{sessionCode}</code></small>
+              </div>
+            )}
           </div>
         </div>
       )}

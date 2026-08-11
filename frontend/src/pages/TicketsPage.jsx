@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import socketService from '../services/socket';
 import { printerSettingsService } from '../services';
+import { useScanSession } from '../context/ScanSessionContext';
 import { onlyDigits, onlyLetters, isValidPhone, isValidName } from '../utils/validators';
 import Swal from 'sweetalert2';
 import 'bootstrap/dist/css/bootstrap.min.css';
@@ -14,6 +15,7 @@ const TicketsPage = () => {
   const { user, token } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const { activa: escaneoActivo } = useScanSession();
   const [tickets, setTickets] = useState([]);
   const [puntosVenta, setPuntosVenta] = useState([]);
   const [selectedPuntoVenta, setSelectedPuntoVenta] = useState('');
@@ -164,52 +166,55 @@ const TicketsPage = () => {
       return;
     }
 
-    console.log('🔌 Configurando Socket.IO...');
-    
     // Conectar al servidor de WebSocket
     socketService.connect(token);
 
-    // Configurar listener para conexión exitosa
-    socketService.on('connect', () => {
-      console.log('✅ Socket.IO conectado');
+    // Unirse ya mismo a la sala que corresponda (socket.io encola el emit
+    // si la conexión todavía no terminó de establecerse)
+    if (isJefe && selectedPuntoVenta) {
+      socketService.joinPuntoVenta(selectedPuntoVenta);
+    } else if (!isJefe && user?.puntoTrabajo) {
+      socketService.joinStaff(user.puntoTrabajo);
+    }
+
+    // Handlers con nombre para poder quitarlos exactamente en el cleanup
+    const onConnect = () => {
       setConnectionStatus('connected');
       socketConnectedRef.current = true;
-      
-      // Unirse a la sala apropiada según el rol del usuario
+
       if (isJefe && selectedPuntoVenta) {
         socketService.joinPuntoVenta(selectedPuntoVenta);
       } else if (!isJefe && user?.puntoTrabajo) {
         socketService.joinStaff(user.puntoTrabajo);
       }
-    });
+    };
 
-    // Configurar listener para desconexión
-    socketService.on('disconnect', (reason) => {
-      console.log('❌ Socket.IO desconectado:', reason);
+    const onDisconnect = () => {
       setConnectionStatus('disconnected');
       socketConnectedRef.current = false;
-    });
+    };
 
-    // Configurar listener para actualizaciones de tickets
-    socketService.on('ticket-updated', (data) => {
-      console.log('📨 Actualización de ticket recibida:', data);
-      
+    const onTicketUpdated = (data) => {
       // Solo actualizar si no hay búsqueda activa y el usuario no está interactuando
       const hasActiveFilters = search.trim() !== '' || seatSearch.trim() !== '' || ticketIdSearch.trim() !== '';
       const timeSinceLastAction = lastUserAction ? Date.now() - lastUserAction : Infinity;
-      
+
       if (!hasActiveFilters && !userInteracting && timeSinceLastAction > 2000) {
         updateTicketInState(data.ticket);
-      } else {
-        console.log('⏸️ Actualización pausada (usuario interactuando o filtrando)');
       }
-    });
+    };
 
-    // Cleanup al desmontar
+    socketService.on('connect', onConnect);
+    socketService.on('disconnect', onDisconnect);
+    socketService.on('ticket-updated', onTicketUpdated);
+
+    // Cleanup: se quitan SOLO los listeners de esta página, sin cerrar el
+    // socket. Es un singleton compartido con el resto de la app (entre otros,
+    // la sesión de escaneo del celular, que debe seguir viva al navegar).
     return () => {
-      console.log('🔌 Limpiando Socket.IO...');
-      socketService.removeAllListeners('ticket-updated');
-      socketService.disconnect();
+      socketService.off('connect', onConnect);
+      socketService.off('disconnect', onDisconnect);
+      socketService.off('ticket-updated', onTicketUpdated);
       socketConnectedRef.current = false;
     };
   }, [token, isRealTimeActive, isJefe, selectedPuntoVenta, user?.puntoTrabajo, search, seatSearch, userInteracting, lastUserAction, updateTicketInState]);
@@ -644,6 +649,20 @@ const TicketsPage = () => {
     if (!scanned || scannedProcessedRef.current === scannedAt) return;
 
     scannedProcessedRef.current = scannedAt;
+
+    // Si ya hay un canje abierto, no se pisa: el operador está escribiendo
+    // los datos de otra persona. Se avisa y se ignora ese escaneo.
+    if (showPrintModal) {
+      navigate(location.pathname, { replace: true, state: {} });
+      Swal.fire({
+        title: 'Termina el canje actual',
+        text: 'Hay un canje abierto. Complétalo o ciérralo antes de escanear el siguiente boleto.',
+        icon: 'warning',
+        timer: 2600,
+        showConfirmButton: false
+      });
+      return;
+    }
 
     if (scanned.canjeado) {
       setSelectedCanjeInfo(scanned);
@@ -1152,14 +1171,21 @@ const TicketsPage = () => {
           <div className="card mb-4">
             <div className="card-header d-flex justify-content-between align-items-center">
               <h5 className="mb-0">Búsqueda</h5>
-              <button
-                type="button"
-                className="btn btn-outline-dark btn-sm"
-                onClick={() => navigate('/escanearTicket')}
-                title="Buscar un ticket escaneando su código de barras/QR"
-              >
-                <i className="fas fa-qrcode me-1"></i>Escanear
-              </button>
+              <div className="d-flex align-items-center gap-2">
+                {escaneoActivo && (
+                  <span className="badge bg-success" title="El celular está vinculado: puedes escanear el siguiente boleto sin volver a emparejarlo">
+                    <i className="fas fa-mobile-alt me-1"></i>Escáner conectado
+                  </span>
+                )}
+                <button
+                  type="button"
+                  className="btn btn-outline-dark btn-sm"
+                  onClick={() => navigate('/escanearTicket')}
+                  title="Buscar un ticket escaneando su código de barras/QR"
+                >
+                  <i className="fas fa-qrcode me-1"></i>Escanear
+                </button>
+              </div>
             </div>
             <div className="card-body">
               <div className="row">

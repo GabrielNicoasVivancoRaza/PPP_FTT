@@ -1,6 +1,7 @@
 import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { ScanSessionProvider } from './context/ScanSessionContext';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import RoleBasedRedirect from './components/RoleBasedRedirect';
@@ -31,6 +32,7 @@ function App() {
   return (
     <AuthProvider>
       <Router>
+        <ScanSessionProvider>
         <Layout>
             <Routes>
               {/* Rutas públicas */}
@@ -159,6 +161,7 @@ function App() {
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Layout>
+        </ScanSessionProvider>
         </Router>
       </AuthProvider>
   );

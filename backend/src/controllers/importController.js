@@ -62,8 +62,12 @@ const importCsv = async (req, res) => {
 
     // Averiguar cuáles ya existen para no tocarlos
     const idsCandidatos = candidatos.map(d => d['Ticket ID']);
+    // OJO: la proyección va como objeto, NO como string. Mongoose interpreta
+    // .select('Ticket ID') como dos campos separados por espacio ("Ticket" e
+    // "ID"), así que el campo real nunca vuelve y todos los tickets parecen
+    // nuevos aunque ya existan.
     const existentes = await TicketModel.find({ 'Ticket ID': { $in: idsCandidatos } })
-      .select('Ticket ID')
+      .select({ 'Ticket ID': 1 })
       .lean();
     const existentesSet = new Set(existentes.map(t => t['Ticket ID']));
 
@@ -71,6 +75,11 @@ const importCsv = async (req, res) => {
 
     let insertados = 0;
     let erroresInsercion = 0;
+    // Duplicados detectados por el índice único de "Ticket ID" al insertar.
+    // Se cuentan como "ya existían", no como error: significa que el ticket
+    // ya estaba en la base aunque el chequeo previo no lo haya visto (por
+    // ejemplo si el formato guardado difiere del que trae el CSV).
+    let duplicadosAlInsertar = 0;
 
     if (nuevos.length > 0) {
       // Se usa el driver nativo (TicketModel.collection) en vez de
@@ -81,11 +90,20 @@ const importCsv = async (req, res) => {
         const resultado = await TicketModel.collection.insertMany(nuevos, { ordered: false });
         insertados = resultado.insertedCount;
       } catch (bulkError) {
-        insertados = bulkError?.result?.insertedCount ?? bulkError?.result?.result?.nInserted ?? 0;
-        erroresInsercion = nuevos.length - insertados;
-        console.error('Errores durante la inserción masiva del CSV:', bulkError.message);
+        // Con ordered:false se intentan TODOS los documentos, así que los que
+        // fallaron son exactamente los de writeErrors y el resto sí entró.
+        const writeErrors = bulkError?.writeErrors || bulkError?.result?.writeErrors || [];
+        duplicadosAlInsertar = writeErrors.filter(e => (e.code ?? e.err?.code) === 11000).length;
+        erroresInsercion = writeErrors.length - duplicadosAlInsertar;
+        insertados = nuevos.length - writeErrors.length;
+
+        if (erroresInsercion > 0) {
+          console.error('Errores durante la inserción masiva del CSV:', bulkError.message);
+        }
       }
     }
+
+    const yaExistian = existentesSet.size + duplicadosAlInsertar;
 
     try {
       await AuditLog.create({
@@ -95,7 +113,7 @@ const importCsv = async (req, res) => {
         detalles: {
           archivo: req.file.originalname,
           totalEnArchivo: filas.length,
-          yaExistian: existentesSet.size,
+          yaExistian,
           nuevosAgregados: insertados,
           omitidosPorDatosIncompletos,
           erroresInsercion
@@ -116,7 +134,7 @@ const importCsv = async (req, res) => {
 
     res.json({
       success: true,
-      message: `${insertados} ticket(s) nuevo(s) agregado(s). ${existentesSet.size} ya existían y no se modificaron.`,
+      message: `${insertados} ticket(s) nuevo(s) agregado(s). ${yaExistian} ya existían y no se modificaron.`,
       data: {
         totalEnArchivo: filas.length,
         yaExistian: existentesSet.size,
