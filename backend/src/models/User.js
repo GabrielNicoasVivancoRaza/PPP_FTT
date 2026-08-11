@@ -22,12 +22,14 @@ const userSchema = new mongoose.Schema({
   rol: {
     type: String,
     required: true,
-    enum: ['jefe', 'staff', 'impresor_solo', 'impresor_cola']
+    enum: ['jefe', 'staff', 'impresor_solo', 'impresor_cola', 'importador']
   },
   puntoTrabajo: {
     type: String,
     required: function() {
-      return this.rol !== 'jefe';
+      // importador es una cuenta operativa global (solo sube CSVs), no
+      // está atada a un punto de venta
+      return this.rol !== 'jefe' && this.rol !== 'importador';
     },
     trim: true
   },

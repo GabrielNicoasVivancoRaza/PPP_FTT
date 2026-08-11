@@ -28,6 +28,7 @@ const AuditPage = () => {
     'config_impresion',
     'canje',
     'canje_masivo',
+    'importacion_csv',
     'login',
     'logout',
     'creacion_usuario',
@@ -41,6 +42,7 @@ const AuditPage = () => {
     config_impresion: 'Config. Impresión',
     canje: 'Canje',
     canje_masivo: 'Canje Masivo',
+    importacion_csv: 'Importación CSV',
     login: 'Login',
     logout: 'Logout',
     creacion_usuario: 'Creación Usuario',
@@ -51,7 +53,8 @@ const AuditPage = () => {
     jefe: { label: 'Jefe', className: 'role-badge-jefe' },
     staff: { label: 'Staff', className: 'role-badge-staff' },
     impresor_solo: { label: 'Impresor', className: 'role-badge-impresor_solo' },
-    impresor_cola: { label: 'Impresor (Cola)', className: 'role-badge-impresor_cola' }
+    impresor_cola: { label: 'Impresor (Cola)', className: 'role-badge-impresor_cola' },
+    importador: { label: 'Importador', className: 'role-badge-importador' }
   };
 
   useEffect(() => {
@@ -111,6 +114,7 @@ const AuditPage = () => {
       config_impresion: 'table-tag-pending',
       canje: 'table-tag-active',
       canje_masivo: 'table-tag-info',
+      importacion_csv: 'table-tag-importador',
       login: 'table-tag-info',
       logout: 'table-tag-neutral',
       creacion_usuario: 'table-tag-info',
@@ -132,6 +136,9 @@ const AuditPage = () => {
     if (log.detalles.ticketsImpresos !== undefined) detalles.push(`Impresos: ${log.detalles.ticketsImpresos}`);
     if (log.detalles.solicitudes !== undefined) detalles.push(`Solicitudes: ${log.detalles.solicitudes}`);
     if (log.detalles.colores?.length) detalles.push(`Colores: ${log.detalles.colores.join(', ')}`);
+    if (log.detalles.archivo) detalles.push(`Archivo: ${log.detalles.archivo}`);
+    if (log.detalles.nuevosAgregados !== undefined) detalles.push(`Nuevos: ${log.detalles.nuevosAgregados}`);
+    if (log.detalles.yaExistian !== undefined) detalles.push(`Ya existían: ${log.detalles.yaExistian}`);
 
     return detalles.join(', ') || '-';
   };

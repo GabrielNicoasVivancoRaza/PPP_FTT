@@ -17,6 +17,7 @@ import PuntosVenta from './pages/PuntosVenta';
 import PrinterSettingsPage from './pages/PrinterSettingsPage';
 import PrintQueuePage from './pages/PrintQueuePage';
 import ImpresosPage from './pages/ImpresosPage';
+import ImportCsvPage from './pages/ImportCsvPage';
 
 // Bootstrap CSS
 import 'bootstrap/dist/css/bootstrap.min.css';
@@ -129,6 +130,15 @@ function App() {
                 element={
                   <ProtectedRoute roles={['jefe', 'impresor_cola']}>
                     <ImpresosPage />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/importar-csv"
+                element={
+                  <ProtectedRoute roles={['jefe', 'importador']}>
+                    <ImportCsvPage />
                   </ProtectedRoute>
                 }
               />

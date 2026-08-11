@@ -20,6 +20,8 @@ const RoleBasedRedirect = () => {
       return <Navigate to="/tickets" replace />;
     case 'impresor_cola':
       return <Navigate to="/cola-impresion" replace />;
+    case 'importador':
+      return <Navigate to="/importar-csv" replace />;
     default:
       return <Navigate to="/tickets" replace />;
   }

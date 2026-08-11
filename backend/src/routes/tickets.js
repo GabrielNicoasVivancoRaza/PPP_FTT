@@ -1,4 +1,5 @@
 const express = require('express');
+const multer = require('multer');
 const router = express.Router();
 const { auth, authorize } = require('../middleware/auth');
 const auditLogger = require('../middleware/auditLogger');
@@ -14,6 +15,20 @@ const {
   canjeTicket,
   bulkCanjeTickets
 } = require('../controllers/ticketController');
+const { importCsv } = require('../controllers/importController');
+
+// Multer en memoria: el CSV se procesa al vuelo, nunca se guarda en disco
+const uploadCsv = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB
+  fileFilter: (req, file, cb) => {
+    const esCSV = file.mimetype === 'text/csv' ||
+      file.mimetype === 'application/vnd.ms-excel' ||
+      file.originalname.toLowerCase().endsWith('.csv');
+    if (!esCSV) return cb(new Error('Solo se permiten archivos CSV'));
+    cb(null, true);
+  }
+});
 
 // Aplicar middleware de selección de colección a TODAS las rutas
 router.use(selectCollection);
@@ -54,6 +69,11 @@ router.get('/transaction/:transactionId', auth, authorize('jefe', 'staff', 'impr
 // @route   GET /api/tickets/barcode/:barcodeData
 // Usado por el escáner (/escanearTicket) para todos los roles operativos
 router.get('/barcode/:barcodeData', auth, authorize('jefe', 'staff', 'impresor_solo', 'impresor_cola'), getTicketByBarcode);
+
+// @route   POST /api/tickets/import-csv
+// Sube el CSV del evento tal cual; el backend filtra columnas y agrega
+// solo los tickets que todavía no existan (no toca los ya existentes)
+router.post('/import-csv', auth, authorize('jefe', 'importador'), uploadCsv.single('csv'), importCsv);
 
 // @route   POST /api/tickets/bulk-canje (DEBE IR ANTES DE RUTAS CON :id)
 // Jefe, Staff e impresor_solo pueden realizar canje masivo.

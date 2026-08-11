@@ -9,7 +9,8 @@ const ROLE_INFO = {
   jefe: { label: 'Jefe', className: 'role-badge-jefe' },
   staff: { label: 'Staff', className: 'role-badge-staff' },
   impresor_solo: { label: 'Impresor', className: 'role-badge-impresor_solo' },
-  impresor_cola: { label: 'Impresor (Cola)', className: 'role-badge-impresor_cola' }
+  impresor_cola: { label: 'Impresor (Cola)', className: 'role-badge-impresor_cola' },
+  importador: { label: 'Importador', className: 'role-badge-importador' }
 };
 
 const UsersPage = () => {
@@ -70,8 +71,8 @@ const UsersPage = () => {
       return;
     }
 
-    // Todos los roles excepto jefe requieren punto de trabajo
-    if (formData.rol !== 'jefe' && !formData.puntoTrabajo) {
+    // Todos los roles excepto jefe e importador requieren punto de trabajo
+    if (formData.rol !== 'jefe' && formData.rol !== 'importador' && !formData.puntoTrabajo) {
       Swal.fire('Falta información', 'Debe seleccionar un punto de trabajo', 'warning');
       return;
     }
@@ -308,10 +309,11 @@ const UsersPage = () => {
                           <option value="staff">Staff</option>
                           <option value="impresor_solo">Impresor (canjea e imprime él mismo)</option>
                           <option value="impresor_cola">Impresor (recibe cola de solicitudes)</option>
+                          <option value="importador">Importador (sube el CSV del evento)</option>
                         </select>
                       </div>
 
-                      {formData.rol !== 'jefe' && (
+                      {formData.rol !== 'jefe' && formData.rol !== 'importador' && (
                         <div className="mb-3">
                           <div className="d-flex justify-content-between align-items-center">
                             <label className="form-label">Punto de Trabajo *</label>

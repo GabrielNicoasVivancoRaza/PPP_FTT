@@ -7,7 +7,8 @@ const ROLE_INFO = {
   jefe: { label: 'Jefe', className: 'role-badge-jefe' },
   staff: { label: 'Staff', className: 'role-badge-staff' },
   impresor_solo: { label: 'Impresor', className: 'role-badge-impresor_solo' },
-  impresor_cola: { label: 'Impresor (Cola)', className: 'role-badge-impresor_cola' }
+  impresor_cola: { label: 'Impresor (Cola)', className: 'role-badge-impresor_cola' },
+  importador: { label: 'Importador', className: 'role-badge-importador' }
 };
 
 const Navigation = () => {
@@ -100,7 +101,26 @@ const Navigation = () => {
                     <i className="fas fa-print me-2"></i>Impresión
                   </button>
                 </li>
+                <li className="nav-item">
+                  <button
+                    className={navLinkClass('/importar-csv')}
+                    onClick={() => navigate('/importar-csv')}
+                  >
+                    <i className="fas fa-file-csv me-2"></i>Importar CSV
+                  </button>
+                </li>
               </>
+            )}
+
+            {role === 'importador' && (
+              <li className="nav-item">
+                <button
+                  className={navLinkClass('/importar-csv')}
+                  onClick={() => navigate('/importar-csv')}
+                >
+                  <i className="fas fa-file-csv me-2"></i>Importar CSV
+                </button>
+              </li>
             )}
 
             {(role === 'jefe' || role === 'staff' || role === 'impresor_solo') && (

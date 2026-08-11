@@ -87,6 +87,18 @@ export const ticketService = {
   getStats: async (params = {}) => {
     const response = await api.get('/tickets/stats', { params });
     return response.data;
+  },
+
+  // Importar CSV del evento (agrega solo los tickets nuevos)
+  importCsv: async (file) => {
+    const formData = new FormData();
+    formData.append('csv', file);
+    const response = await api.post('/tickets/import-csv', formData, {
+      // Se borra el Content-Type por defecto (application/json) para que el
+      // navegador arme el multipart/form-data con el boundary correcto
+      headers: { 'Content-Type': undefined }
+    });
+    return response.data;
   }
 };
 

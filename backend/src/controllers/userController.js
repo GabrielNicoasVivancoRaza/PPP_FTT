@@ -22,7 +22,7 @@ const createUser = async (req, res) => {
       });
     }
 
-    if (rol !== 'jefe' && !puntoTrabajo) {
+    if (rol !== 'jefe' && rol !== 'importador' && !puntoTrabajo) {
       return res.status(400).json({
         success: false,
         message: 'Punto de trabajo es requerido para este rol'
