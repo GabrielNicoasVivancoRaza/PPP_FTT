@@ -1045,36 +1045,23 @@ const TicketsPage = () => {
                         📅 Colecciones Disponibles:
                       </span>
                       {activeCollection.all.map((col, idx) => (
-                        <span 
+                        <span
                           key={idx}
-                          className="badge" 
-                          style={{ 
-                            backgroundColor: col === 'FechaUno' ? '#007bff' :
-                                          col === 'FechaDos' ? '#28a745' :
-                                          col === 'FechaTres' ? '#ffc107' : '#6c757d',
+                          className="badge bg-primary"
+                          style={{
                             fontSize: '0.85em',
                             opacity: col === activeCollection.current ? 1 : 0.7
                           }}
                           title={col === activeCollection.current ? 'Colección en uso' : 'También disponible hoy'}
                         >
-                          {col === 'FechaUno' && '🎵 Fecha 1'}
-                          {col === 'FechaDos' && '🎸 Fecha 2'}
-                          {col === 'FechaTres' && '🎤 Fecha 3'}
+                          📅 {col}
                           {col === activeCollection.current && ' ✓'}
                         </span>
                       ))}
                     </div>
                   ) : (
                     /* Una sola colección activa */
-                    <span 
-                      className="badge" 
-                      style={{ 
-                        backgroundColor: activeCollection.active === 'FechaUno' ? '#007bff' :
-                                        activeCollection.active === 'FechaDos' ? '#28a745' :
-                                        activeCollection.active === 'FechaTres' ? '#ffc107' : '#6c757d',
-                        fontSize: '0.9em'
-                      }}
-                    >
+                    <span className="badge bg-primary" style={{ fontSize: '0.9em' }}>
                       📅 Colección Activa: {activeCollection.active}
                     </span>
                   )}

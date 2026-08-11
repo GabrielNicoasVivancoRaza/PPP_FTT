@@ -1,33 +1,27 @@
-const mongoose = require('mongoose');
+const { getCollectionName } = require('./collectionName');
 
-// Colección única para Lumineers
-const defaultCollection = process.env.COLLECTION_NAME || 'Lumineers_Canje';
+// El nombre de la colección activa sale siempre de COLLECTION_NAME.
+// No hay nombres hardcodeados aquí: cambiar de colección es cambiar esa
+// variable de entorno.
 
-// Obtener modelo de Ticket para la colección
-const getTicketModel = () => {
-  // Obtener el schema de Ticket
-  const ticketSchema = require('../models/Ticket').schema;
-  
-  // Si ya existe el modelo, retornarlo
-  if (mongoose.models[defaultCollection]) {
-    return mongoose.models[defaultCollection];
-  }
-  
-  // Crear nuevo modelo con la colección
-  return mongoose.model(defaultCollection, ticketSchema, defaultCollection);
-};
+// Modelo de Ticket de la colección activa.
+// Devuelve el MISMO modelo que models/Ticket.js (ambos se construyen con
+// getCollectionName()), de modo que es imposible que una parte del código
+// lea de una colección y otra escriba en otra distinta.
+const getTicketModel = () => require('../models/Ticket');
 
-// Retornar información de la colección activa
+// Información de la colección activa
 const getActiveCollection = () => {
+  const active = getCollectionName();
   return {
-    active: defaultCollection,
-    available: [defaultCollection],
+    active,
+    available: [active],
     multiple: false
   };
 };
 
 module.exports = {
-  defaultCollection,
+  getCollectionName,
   getTicketModel,
   getActiveCollection
 };

@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { getCollectionName } = require('../config/collectionName');
 
 const ticketSchema = new mongoose.Schema({
   'First Name': {
@@ -152,4 +153,7 @@ ticketSchema.index({ canjeado: 1, puntoTrabajo: 1 });
 ticketSchema.index({ updatedAt: -1 }); // Para check-changes - CRÍTICO para performance
 ticketSchema.index({ 'Ticket': 1, updatedAt: -1 }); // Compuesto para check-changes con localidad
 
-module.exports = mongoose.model('Ticket', ticketSchema, 'FechaUno');
+// La colección sale de COLLECTION_NAME (ver config/collectionName.js), nunca
+// de un nombre fijo en el código: así renombrar o cambiar de colección es
+// solo cambiar la variable de entorno.
+module.exports = mongoose.model('Ticket', ticketSchema, getCollectionName());

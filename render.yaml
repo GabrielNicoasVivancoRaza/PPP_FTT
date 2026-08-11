@@ -13,6 +13,8 @@ services:
         value: production
       - key: MONGODB_URI
         sync: false # Configurar manualmente en el dashboard de Render (no versionar credenciales)
+      - key: COLLECTION_NAME
+        sync: false # Nombre de la colección de tickets: se cambia en el dashboard, sin redeploy de código
       - key: JWT_SECRET
         generateValue: true
       - key: DEFAULT_PASSWORD

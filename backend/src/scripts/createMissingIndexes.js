@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 require('dotenv').config();
+const { getCollectionName } = require('../config/collectionName');
 
 const createMissingIndexes = async () => {
   try {
@@ -8,7 +9,9 @@ const createMissingIndexes = async () => {
     console.log('✓ Conectado a MongoDB');
 
     const db = mongoose.connection.db;
-    const ticketsCollection = db.collection('FechaUno');
+    const collectionName = getCollectionName();
+    console.log(`📁 Colección: ${collectionName}`);
+    const ticketsCollection = db.collection(collectionName);
 
     console.log('\n📊 Creando índices faltantes para mejor performance...\n');
 

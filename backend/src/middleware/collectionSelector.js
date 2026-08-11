@@ -2,8 +2,8 @@ const { getTicketModel, getActiveCollection } = require('../config/collections')
 const logger = require('../config/logger');
 
 /**
- * Middleware que carga el modelo de Ticket para la colección Lumineers_Canje
- * Adjunta el modelo de Ticket activo a req.TicketModel
+ * Middleware que carga el modelo de Ticket para la colección activa
+ * (definida por COLLECTION_NAME) y lo adjunta a req.TicketModel
  */
 const selectCollection = async (req, res, next) => {
   try {
@@ -19,15 +19,11 @@ const selectCollection = async (req, res, next) => {
 
     next();
   } catch (error) {
+    // No hay colección por defecto a la que caer: si COLLECTION_NAME no está
+    // configurada, seguir adelante significaría leer/escribir en una
+    // colección equivocada. Mejor cortar aquí con el error visible.
     logger.error('❌ Error al determinar colección activa:', error);
-    
-    // En caso de error, usar colección por defecto
-    const collectionInfo = getActiveCollection();
-    req.activeCollection = collectionInfo.active;
-    req.activeCollections = [collectionInfo.active];
-    req.TicketModel = getTicketModel();
-    
-    next();
+    next(error);
   }
 };
 
@@ -40,17 +36,12 @@ const getActiveCollectionInfo = async (req, res, next) => {
     req.collectionInfo = {
       nombre: activeCollection.active,
       activa: true,
-      descripcion: 'Base de datos Lumineers - Canje de boletos'
+      descripcion: `Colección de tickets: ${activeCollection.active}`
     };
     next();
   } catch (error) {
     logger.error('❌ Error al obtener información de colección:', error);
-    req.collectionInfo = {
-      nombre: 'Lumineers_Canje',
-      activa: true,
-      descripcion: 'Base de datos Lumineers - Canje de boletos'
-    };
-    next();
+    next(error);
   }
 };
 
