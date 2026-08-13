@@ -706,8 +706,10 @@ const getLocalidadesDisponibles = async (req, res) => {
     // Usar el modelo de la colección activa (misma que /api/tickets)
     const TicketModel = req.TicketModel || Ticket;
 
-    // Extraer localidades únicas de la columna 'Seat' de los tickets
-    const localidades = await TicketModel.distinct('Seat');
+    // Las localidades salen del campo 'Ticket' (tipo de entrada: PALCO,
+    // GENERAL, PLATINUM...), NO de 'Seat', que trae el asiento específico
+    // (p. ej. "PALCO 12 - Silla 3") y generaría cientos de opciones.
+    const localidades = await TicketModel.distinct('Ticket');
     
     // Ordenar alfabéticamente y filtrar vacíos
     const localidadesOrdenadas = localidades

@@ -89,6 +89,24 @@ export const ticketService = {
     return response.data;
   },
 
+  // Marcar / desmarcar un ticket como fraude (solo jefe)
+  marcarFraude: async (ticketId, fraude, motivo = '') => {
+    const response = await api.post(`/tickets/${ticketId}/fraude`, { fraude, motivo });
+    return response.data;
+  },
+
+  // Tickets que dejaron de aparecer en el CSV (anulados)
+  getTicketsEliminados: async (params = {}) => {
+    const response = await api.get('/tickets/eliminados', { params });
+    return response.data;
+  },
+
+  // Alta manual de un ticket (rol importador): entra ya como canjeado
+  crearTicketManual: async (datos) => {
+    const response = await api.post('/tickets/manual', datos);
+    return response.data;
+  },
+
   // Importar CSV del evento (agrega solo los tickets nuevos)
   importCsv: async (file) => {
     const formData = new FormData();

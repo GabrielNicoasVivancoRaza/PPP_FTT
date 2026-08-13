@@ -1,13 +1,26 @@
-// La retirada de tickets (canje) se autoriza a nivel de Transaction ID: si
-// se completa el formulario "quién retira" para un ticket de una
-// transacción, esa misma información debe aplicarse a todos los demás
-// tickets de esa transacción que todavía no hayan sido canjeados, ya que en
-// la práctica se retiran/entregan todos juntos.
+// La retirada de tickets (canje) se autoriza a nivel de Transaction ID: es
+// común que una persona retire varios boletos de la misma compra. Pero NO se
+// asume que sean todos: quien canjea elige explícitamente cuáles se completan
+// con la misma información (checkboxes en el modal de canje).
 
-// Propaga los datos de canje (quién retira, celular, etc.) a todos los
-// tickets de una transacción que aún no estén canjeados. Devuelve todos los
-// tickets de esa transacción (incluyendo el que ya estaba canjeado).
-const propagateCanjeToTransaction = async (TicketModel, transactionId, canjeInfo, now = new Date()) => {
+/**
+ * Propaga los datos de canje a los tickets seleccionados de una transacción.
+ *
+ * @param ticketIdsSeleccionados Ticket IDs elegidos por el usuario. Si viene
+ *        vacío o no se pasa, NO se propaga a ningún otro ticket.
+ * Devuelve los tickets efectivamente actualizados.
+ */
+const propagateCanjeToTransaction = async (
+  TicketModel,
+  transactionId,
+  canjeInfo,
+  ticketIdsSeleccionados = [],
+  now = new Date()
+) => {
+  if (!Array.isArray(ticketIdsSeleccionados) || ticketIdsSeleccionados.length === 0) {
+    return [];
+  }
+
   const { usuarioId, puntoTrabajo, quienRetira, celular, parentesco, quienOtro } = canjeInfo;
 
   const setFields = {
@@ -33,17 +46,26 @@ const propagateCanjeToTransaction = async (TicketModel, transactionId, canjeInfo
   const updateOp = { $set: setFields };
   if (Object.keys(unsetFields).length > 0) updateOp.$unset = unsetFields;
 
-  // OJO: usar { $ne: true } y no "false". Muchos tickets importados desde el
-  // CSV nunca pasaron por Mongoose (import directo a Mongo), por lo que el
-  // campo "canjeado" puede no existir en el documento. Una condición
-  // "canjeado: false" NO matchea documentos donde el campo simplemente no
-  // existe, dejándolos fuera de la propagación.
-  await TicketModel.updateMany(
-    { 'Transaction ID': transactionId, canjeado: { $ne: true } },
-    updateOp
-  );
+  // Solo tickets de esa transacción, elegidos por el usuario, que no estén
+  // ya canjeados ni marcados como fraude/eliminados.
+  // OJO: se usa { $ne: true } y no "false" porque los tickets importados
+  // directo a Mongo pueden no tener esos campos definidos.
+  const filtro = {
+    'Transaction ID': transactionId,
+    'Ticket ID': { $in: ticketIdsSeleccionados },
+    canjeado: { $ne: true },
+    fraude: { $ne: true },
+    eliminado: { $ne: true }
+  };
 
-  return TicketModel.find({ 'Transaction ID': transactionId });
+  const aActualizar = await TicketModel.find(filtro);
+  if (aActualizar.length === 0) return [];
+
+  await TicketModel.updateMany(filtro, updateOp);
+
+  return TicketModel.find({
+    'Ticket ID': { $in: aActualizar.map(t => t['Ticket ID']) }
+  });
 };
 
 module.exports = { propagateCanjeToTransaction };

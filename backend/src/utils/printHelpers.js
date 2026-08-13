@@ -52,18 +52,17 @@ const markTransactionPrinted = async (TicketModel, transactionId, tipo, fallback
   return TicketModel.find(baseQuery);
 };
 
-// Emite 'ticket-updated' a la sala de staff correspondiente de cada ticket
+// Emite 'ticket-updated' a la sala común de tickets, donde están todas las
+// pantallas que muestran la tabla (sin importar rol ni punto de venta).
 const emitTicketUpdates = (io, tickets, action) => {
   if (!io) return;
   const timestamp = new Date().toISOString();
   tickets.forEach(ticket => {
-    if (ticket.puntoTrabajo) {
-      io.to(`staff-${ticket.puntoTrabajo}`).emit('ticket-updated', {
-        action,
-        ticket: ticket.toObject ? ticket.toObject() : ticket,
-        timestamp
-      });
-    }
+    io.to('tickets').emit('ticket-updated', {
+      action,
+      ticket: ticket.toObject ? ticket.toObject() : ticket,
+      timestamp
+    });
   });
 };
 

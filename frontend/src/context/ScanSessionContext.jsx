@@ -57,6 +57,35 @@ export const ScanSessionProvider = ({ children }) => {
     return codigo;
   }, []);
 
+  // Notificación al administrador cuando una importación detecta tickets
+  // que ya no están en el CSV del evento (anulados/reembolsados).
+  useEffect(() => {
+    if (!isAuthenticated || userRole !== 'jefe') return;
+
+    socketService.connect(token);
+
+    const onEliminados = (data) => {
+      const yaCanjeados = data?.eliminadosYaCanjeados || 0;
+      Swal.fire({
+        title: 'Tickets eliminados del evento',
+        html:
+          `Se detectaron <strong>${data?.eliminados || 0}</strong> ticket(s) que ya no vienen en el archivo` +
+          (yaCanjeados > 0
+            ? `<br/><span style="color:#dc3545"><strong>${yaCanjeados}</strong> de ellos YA habían sido canjeados</span>`
+            : ''),
+        icon: yaCanjeados > 0 ? 'warning' : 'info',
+        confirmButtonText: 'Ver detalle',
+        showCancelButton: true,
+        cancelButtonText: 'Cerrar'
+      }).then(result => {
+        if (result.isConfirmed) navigate('/tickets-eliminados');
+      });
+    };
+
+    socketService.on('tickets-eliminados-detectados', onEliminados);
+    return () => socketService.off('tickets-eliminados-detectados', onEliminados);
+  }, [isAuthenticated, userRole, token, navigate]);
+
   useEffect(() => {
     if (!sessionCode || !isAuthenticated) return;
 

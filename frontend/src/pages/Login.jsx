@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Row, Col, Card, Form, Button, Alert } from 'react-bootstrap';
+import { Container, Row, Col, Card, Form, Button, Alert, InputGroup } from 'react-bootstrap';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Swal from 'sweetalert2';
@@ -13,6 +13,7 @@ const Login = () => {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [verPassword, setVerPassword] = useState(false);
 
   const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
@@ -103,15 +104,27 @@ const Login = () => {
 
                 <Form.Group className="mb-3">
                   <Form.Label>Contraseña</Form.Label>
-                  <Form.Control
-                    type="password"
-                    name="password"
-                    value={formData.password}
-                    onChange={handleChange}
-                    placeholder="Contraseña"
-                    required
-                    disabled={loading}
-                  />
+                  <InputGroup>
+                    <Form.Control
+                      type={verPassword ? 'text' : 'password'}
+                      name="password"
+                      value={formData.password}
+                      onChange={handleChange}
+                      placeholder="Contraseña"
+                      required
+                      disabled={loading}
+                    />
+                    <Button
+                      variant="outline-secondary"
+                      type="button"
+                      onClick={() => setVerPassword(v => !v)}
+                      disabled={loading}
+                      title={verPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                      aria-label={verPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                    >
+                      <i className={verPassword ? 'fas fa-eye-slash' : 'fas fa-eye'}></i>
+                    </Button>
+                  </InputGroup>
                 </Form.Group>
 
                 <div className="d-grid">

@@ -48,11 +48,21 @@ const ImportCsvPage = () => {
         setArchivo(null);
         if (inputRef.current) inputRef.current.value = '';
 
+        const { nuevosAgregados, yaExistian, eliminados = 0, eliminadosYaCanjeados = 0 } = response.data;
+
+        let html = `<strong>${nuevosAgregados}</strong> ticket(s) nuevo(s) agregado(s)<br/>` +
+                   `${yaExistian} ya existían (sin modificar)`;
+        if (eliminados > 0) {
+          html += `<br/><span class="text-danger"><strong>${eliminados}</strong> ya no están en el archivo y se marcaron como eliminados</span>`;
+          if (eliminadosYaCanjeados > 0) {
+            html += `<br/><span class="text-danger"><strong>${eliminadosYaCanjeados}</strong> de ellos YA habían sido canjeados</span>`;
+          }
+        }
+
         Swal.fire({
           title: 'Importación completa',
-          html: `<strong>${response.data.nuevosAgregados}</strong> ticket(s) nuevo(s) agregado(s)<br/>` +
-                `${response.data.yaExistian} ya existían (sin modificar)`,
-          icon: 'success'
+          html,
+          icon: eliminadosYaCanjeados > 0 ? 'warning' : 'success'
         });
       }
     } catch (error) {
@@ -130,12 +140,29 @@ const ImportCsvPage = () => {
                     </li>
                   )}
                   {ultimoResultado.erroresInsercion > 0 && (
-                    <li className="mb-0">
+                    <li className="mb-2">
                       <span className="badge bg-danger me-2">{ultimoResultado.erroresInsercion}</span>
                       con error al insertar
                     </li>
                   )}
+                  {ultimoResultado.eliminados > 0 && (
+                    <li className="mb-2">
+                      <span className="badge bg-danger me-2">{ultimoResultado.eliminados}</span>
+                      eliminados del evento (ya no vienen en el archivo)
+                    </li>
+                  )}
+                  {ultimoResultado.eliminadosYaCanjeados > 0 && (
+                    <li className="mb-0">
+                      <span className="badge bg-danger me-2">{ultimoResultado.eliminadosYaCanjeados}</span>
+                      <strong className="text-danger">eliminados que YA habían sido canjeados</strong>
+                    </li>
+                  )}
                 </ul>
+                {ultimoResultado.eliminados > 0 && (
+                  <a href="/tickets-eliminados" className="btn btn-outline-danger btn-sm mt-3">
+                    Ver tickets eliminados
+                  </a>
+                )}
               </div>
             </div>
           ) : (

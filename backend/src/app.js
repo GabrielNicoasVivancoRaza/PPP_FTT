@@ -248,6 +248,15 @@ io.on('connection', (socket) => {
     console.log(`👤 Socket ${socket.id} se unió a staff-${puntoTrabajoNombre}`);
   });
 
+  // Sala común de tickets: la usan todas las pantallas que muestran la
+  // tabla de tickets, sin importar el rol ni el punto de venta. Antes las
+  // actualizaciones solo iban a "staff-<punto>", así que un jefe (que no se
+  // une a esa sala) nunca veía los cambios en vivo.
+  socket.on('join-tickets', () => {
+    socket.join('tickets');
+    console.log(`🎟️ Socket ${socket.id} se unió a la sala de tickets`);
+  });
+
   // Unirse a sala de impresores (cola de impresión compartida)
   socket.on('join-impresores', () => {
     socket.join('impresores');

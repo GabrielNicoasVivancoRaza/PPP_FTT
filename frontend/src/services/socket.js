@@ -91,6 +91,15 @@ class SocketService {
     }
   }
 
+  // Sala común para las pantallas que muestran la tabla de tickets:
+  // recibe las actualizaciones sin depender del rol ni del punto de venta
+  joinTickets() {
+    if (this.socket) {
+      console.log('🎟️ Uniéndose a la sala de tickets');
+      this.socket.emit('join-tickets');
+    }
+  }
+
   joinScanSession(sessionCode) {
     if (this.socket) {
       console.log('📷 Uniéndose a sesión de escaneo:', sessionCode);

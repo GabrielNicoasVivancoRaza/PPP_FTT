@@ -19,6 +19,8 @@ import PrinterSettingsPage from './pages/PrinterSettingsPage';
 import PrintQueuePage from './pages/PrintQueuePage';
 import ImpresosPage from './pages/ImpresosPage';
 import ImportCsvPage from './pages/ImportCsvPage';
+import TicketsEliminadosPage from './pages/TicketsEliminadosPage';
+import AgregarTicketPage from './pages/AgregarTicketPage';
 
 // Bootstrap CSS
 import 'bootstrap/dist/css/bootstrap.min.css';
@@ -145,13 +147,31 @@ function App() {
                 }
               />
 
-              <Route 
-                path="/change-password" 
+              <Route
+                path="/tickets-eliminados"
+                element={
+                  <ProtectedRoute roles={['jefe', 'importador']}>
+                    <TicketsEliminadosPage />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/agregar-ticket"
+                element={
+                  <ProtectedRoute roles={['jefe', 'importador']}>
+                    <AgregarTicketPage />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/change-password"
                 element={
                   <ProtectedRoute>
                     <ChangePassword />
                   </ProtectedRoute>
-                } 
+                }
               />
 
               {/* Página de no autorizado */}

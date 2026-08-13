@@ -123,6 +123,27 @@ const Navigation = () => {
               </li>
             )}
 
+            {(role === 'jefe' || role === 'importador') && (
+              <>
+                <li className="nav-item">
+                  <button
+                    className={navLinkClass('/agregar-ticket')}
+                    onClick={() => navigate('/agregar-ticket')}
+                  >
+                    <i className="fas fa-plus-circle me-2"></i>Agregar Ticket
+                  </button>
+                </li>
+                <li className="nav-item">
+                  <button
+                    className={navLinkClass('/tickets-eliminados')}
+                    onClick={() => navigate('/tickets-eliminados')}
+                  >
+                    <i className="fas fa-trash-can me-2"></i>Eliminados
+                  </button>
+                </li>
+              </>
+            )}
+
             {(role === 'jefe' || role === 'staff' || role === 'impresor_solo') && (
               <li className="nav-item">
                 <button

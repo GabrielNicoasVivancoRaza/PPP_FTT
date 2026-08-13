@@ -3,8 +3,9 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import socketService from '../services/socket';
-import { printerSettingsService } from '../services';
+import { printerSettingsService, ticketService } from '../services';
 import { useScanSession } from '../context/ScanSessionContext';
+import { getCedula, getLast4 } from '../utils/ticketFields';
 import { onlyDigits, onlyLetters, isValidPhone, isValidName } from '../utils/validators';
 import Swal from 'sweetalert2';
 import 'bootstrap/dist/css/bootstrap.min.css';
@@ -34,7 +35,10 @@ const TicketsPage = () => {
   });
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState(null);
-  const [transactionTicketCount, setTransactionTicketCount] = useState(null); // # tickets de la misma Transaction ID
+  // Otros tickets de la misma Transaction ID y cuáles eligió el usuario
+  // para completarlos con la misma información de canje
+  const [ticketsTransaccion, setTicketsTransaccion] = useState([]);
+  const [ticketsSeleccionados, setTicketsSeleccionados] = useState(new Set());
   const [printerEnabled, setPrinterEnabled] = useState(false); // ¿Función de impresión activa?
   const [ticketColors, setTicketColors] = useState([]); // [{ tipo, color }] configurado por el jefe
   const [printForm, setPrintForm] = useState({
@@ -104,22 +108,21 @@ const TicketsPage = () => {
     return entry ? entry.color : null;
   }, [ticketColors]);
 
-  // Función para actualizar un ticket individual en el estado
+  // Actualiza un ticket que ya está en la lista. NO agrega tickets nuevos:
+  // si no está en pantalla es porque no pasa los filtros actuales, y meterlo
+  // a la fuerza ensuciaría la búsqueda del usuario.
   const updateTicketInState = useCallback((updatedTicket) => {
+    if (!updatedTicket || !updatedTicket['Ticket ID']) return;
+
     setTickets(prevTickets => {
       const ticketIndex = prevTickets.findIndex(t => t['Ticket ID'] === updatedTicket['Ticket ID']);
-      
-      if (ticketIndex !== -1) {
-        // Actualizar ticket existente
-        const newTickets = [...prevTickets];
-        newTickets[ticketIndex] = { ...newTickets[ticketIndex], ...updatedTicket };
-        return newTickets;
-      }
-      
-      // Si no existe, agregarlo (solo si aplican los filtros actuales)
-      return [...prevTickets, updatedTicket];
+      if (ticketIndex === -1) return prevTickets;
+
+      const newTickets = [...prevTickets];
+      newTickets[ticketIndex] = { ...newTickets[ticketIndex], ...updatedTicket };
+      return newTickets;
     });
-    
+
     // Mostrar indicador de actualización brevemente
     setUpdateIndicator(true);
     setTimeout(() => setUpdateIndicator(false), 1000);
@@ -169,8 +172,10 @@ const TicketsPage = () => {
     // Conectar al servidor de WebSocket
     socketService.connect(token);
 
-    // Unirse ya mismo a la sala que corresponda (socket.io encola el emit
-    // si la conexión todavía no terminó de establecerse)
+    // Sala común de tickets: la usan todos los roles, por eso las
+    // actualizaciones llegan aunque el jefe no tenga punto de venta elegido.
+    // (socket.io encola el emit si la conexión aún no terminó de abrirse)
+    socketService.joinTickets();
     if (isJefe && selectedPuntoVenta) {
       socketService.joinPuntoVenta(selectedPuntoVenta);
     } else if (!isJefe && user?.puntoTrabajo) {
@@ -182,6 +187,7 @@ const TicketsPage = () => {
       setConnectionStatus('connected');
       socketConnectedRef.current = true;
 
+      socketService.joinTickets();
       if (isJefe && selectedPuntoVenta) {
         socketService.joinPuntoVenta(selectedPuntoVenta);
       } else if (!isJefe && user?.puntoTrabajo) {
@@ -194,14 +200,13 @@ const TicketsPage = () => {
       socketConnectedRef.current = false;
     };
 
+    // Se aplica SIEMPRE: es una actualización quirúrgica de una fila que ya
+    // está en pantalla, así que no interfiere con la búsqueda ni con lo que
+    // el usuario esté escribiendo. Antes se descartaba cuando había filtros
+    // activos, y por eso un canje hecho desde otro dispositivo no se pintaba
+    // hasta recargar la página.
     const onTicketUpdated = (data) => {
-      // Solo actualizar si no hay búsqueda activa y el usuario no está interactuando
-      const hasActiveFilters = search.trim() !== '' || seatSearch.trim() !== '' || ticketIdSearch.trim() !== '';
-      const timeSinceLastAction = lastUserAction ? Date.now() - lastUserAction : Infinity;
-
-      if (!hasActiveFilters && !userInteracting && timeSinceLastAction > 2000) {
-        updateTicketInState(data.ticket);
-      }
+      updateTicketInState(data.ticket);
     };
 
     socketService.on('connect', onConnect);
@@ -217,7 +222,9 @@ const TicketsPage = () => {
       socketService.off('ticket-updated', onTicketUpdated);
       socketConnectedRef.current = false;
     };
-  }, [token, isRealTimeActive, isJefe, selectedPuntoVenta, user?.puntoTrabajo, search, seatSearch, userInteracting, lastUserAction, updateTicketInState]);
+    // Sin dependencias de búsqueda: antes el efecto se re-ejecutaba con cada
+    // tecla, rearmando el socket y sus listeners constantemente.
+  }, [token, isRealTimeActive, isJefe, selectedPuntoVenta, user?.puntoTrabajo, updateTicketInState]);
   
   // Reconectar y unirse a nueva sala cuando cambia el punto de venta
   useEffect(() => {
@@ -611,33 +618,58 @@ const TicketsPage = () => {
     }
   };
 
-  // Consulta cuántos tickets tiene asociados una transacción (para avisar
-  // que el canje/impresión se completa para todos, no solo el seleccionado)
-  const fetchTransactionTicketCount = async (transactionId) => {
-    if (!transactionId) return;
-    setTransactionTicketCount(null);
+  // Trae los demás tickets de la transacción para que el usuario elija
+  // cuáles se completan con la misma información de canje
+  const fetchTicketsDeTransaccion = async (ticket) => {
+    setTicketsTransaccion([]);
+    setTicketsSeleccionados(new Set());
+    if (!ticket?.['Transaction ID']) return;
+
     try {
-      const response = await api.get(`/tickets/transaction/${transactionId}`);
+      const response = await api.get(`/tickets/transaction/${ticket['Transaction ID']}`);
       if (response.data.success) {
-        setTransactionTicketCount(response.data.count ?? response.data.tickets?.length ?? null);
+        // Solo los que se pueden canjear: sin canjear, sin fraude, no eliminados
+        const otros = (response.data.tickets || []).filter(t =>
+          t['Ticket ID'] !== ticket['Ticket ID'] &&
+          !t.canjeado && !t.fraude && !t.eliminado
+        );
+        setTicketsTransaccion(otros);
+        // Por defecto vienen todos marcados: es el caso más común
+        setTicketsSeleccionados(new Set(otros.map(t => t['Ticket ID'])));
       }
     } catch (error) {
       console.error('Error al obtener tickets de la transacción:', error);
     }
   };
 
+  const toggleTicketTransaccion = (ticketId) => {
+    setTicketsSeleccionados(prev => {
+      const next = new Set(prev);
+      if (next.has(ticketId)) next.delete(ticketId); else next.add(ticketId);
+      return next;
+    });
+  };
+
+  const toggleTodosTicketsTransaccion = () => {
+    setTicketsSeleccionados(prev =>
+      prev.size === ticketsTransaccion.length
+        ? new Set()
+        : new Set(ticketsTransaccion.map(t => t['Ticket ID']))
+    );
+  };
+
   const handlePrint = (ticket) => {
     // Abrir modal para realizar canje
     setSelectedTicket(ticket);
     setShowPrintModal(true);
-    fetchTransactionTicketCount(ticket['Transaction ID']);
+    fetchTicketsDeTransaccion(ticket);
   };
 
   const handleSendToPrint = async (ticket) => {
     // Función mantenida para compatibilidad - ahora abre modal de canje
     setSelectedTicket(ticket);
     setShowPrintModal(true);
-    fetchTransactionTicketCount(ticket['Transaction ID']);
+    fetchTicketsDeTransaccion(ticket);
   };
 
   // Si venimos de /escanearTicket con un ticket encontrado, abrir directo el
@@ -732,16 +764,20 @@ const TicketsPage = () => {
           canjeData.quienOtro = printForm.quienOtro;
         }
 
+        // Tickets de la misma transacción que el usuario marcó para
+        // completar con esta misma información
+        canjeData.ticketsSeleccionados = Array.from(ticketsSeleccionados);
+
         const canjeResponse = await api.post(`/tickets/${selectedTicket['Ticket ID']}/canje`, canjeData);
-        const ticketsTransaccion = canjeResponse.data?.data?.ticketsTransaccion || 0;
+        const adicionales = canjeResponse.data?.data?.ticketsTransaccion || 0;
 
         Swal.fire({
           title: userRole === 'impresor_solo' ? 'Canjeado e impreso' : 'Canje realizado',
-          text: ticketsTransaccion > 0
-            ? `Se completó la misma información en ${ticketsTransaccion} ticket(s) más de la misma transacción`
+          text: adicionales > 0
+            ? `Se completó la misma información en ${adicionales} ticket(s) más de la transacción`
             : undefined,
           icon: 'success',
-          timer: ticketsTransaccion > 0 ? 2500 : 1500,
+          timer: adicionales > 0 ? 2500 : 1500,
           showConfirmButton: false
         });
 
@@ -754,7 +790,7 @@ const TicketsPage = () => {
 
       setShowPrintModal(false);
       setPrintForm({ quienRetira: '', parentesco: '', quienOtro: '', celular: '' });
-      setTransactionTicketCount(null);
+      setTicketsTransaccion([]); setTicketsSeleccionados(new Set());
 
       // Actualización suave inmediata (silenciosa)
       await refreshTicketsData(false);
@@ -809,6 +845,9 @@ const TicketsPage = () => {
 
     // Si el ticket ya fue canjeado, no se puede volver a canjear
     if (ticket.canjeado) return false;
+
+    // Marcado como fraude o eliminado del evento: canje bloqueado
+    if (ticket.fraude || ticket.eliminado) return false;
 
     // Jefe, staff e impresor_solo pueden canjear (impresor_solo además imprime al canjear)
     return userRole === 'jefe' || userRole === 'staff' || userRole === 'impresor_solo';
@@ -942,6 +981,56 @@ const TicketsPage = () => {
     }
   };
 
+  // Marcar / quitar la marca de fraude (solo jefe)
+  const handleToggleFraude = async (ticket) => {
+    const marcando = !ticket.fraude;
+
+    if (marcando) {
+      const { value: motivo, isConfirmed } = await Swal.fire({
+        title: 'Marcar como FRAUDE',
+        html: `Ticket <code>${ticket['Ticket ID']}</code> — ${ticket['First Name'] || ''} ${ticket['Last Name'] || ''}<br/>` +
+              '<small>No se va a poder canjear mientras esté marcado.</small>',
+        input: 'text',
+        inputPlaceholder: 'Motivo (opcional)',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Marcar como fraude',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#dc3545'
+      });
+      if (!isConfirmed) return;
+
+      try {
+        await ticketService.marcarFraude(ticket['Ticket ID'], true, motivo || '');
+        Swal.fire({ title: 'Marcado como fraude', icon: 'success', timer: 1500, showConfirmButton: false });
+        await refreshTicketsData(false);
+      } catch (error) {
+        console.error('Error al marcar fraude:', error);
+        Swal.fire('Error', error.response?.data?.message || 'No se pudo marcar como fraude', 'error');
+      }
+      return;
+    }
+
+    const { isConfirmed } = await Swal.fire({
+      title: 'Quitar marca de fraude',
+      text: 'El ticket volverá a poder canjearse.',
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Quitar marca',
+      cancelButtonText: 'Cancelar'
+    });
+    if (!isConfirmed) return;
+
+    try {
+      await ticketService.marcarFraude(ticket['Ticket ID'], false);
+      Swal.fire({ title: 'Marca retirada', icon: 'success', timer: 1500, showConfirmButton: false });
+      await refreshTicketsData(false);
+    } catch (error) {
+      console.error('Error al quitar fraude:', error);
+      Swal.fire('Error', error.response?.data?.message || 'No se pudo quitar la marca', 'error');
+    }
+  };
+
   const getPrintButtonText = (ticket) => {
     const userRole = user?.role || user?.rol;
 
@@ -992,6 +1081,9 @@ const TicketsPage = () => {
   // 'pending' (amarillo) = canjeado, esperando impresión por la cola
   // 'printed' (azul) = impreso pero aún no canjeado individualmente
   const getTicketPrintStatus = (ticket) => {
+    // Fraude y eliminado mandan sobre cualquier otro estado: son bloqueos
+    if (ticket.fraude) return 'fraude';
+    if (ticket.eliminado) return 'eliminado';
     if (ticket.canjeado && (ticket.impreso || !printerEnabled)) return 'completed';
     if (ticket.canjeado) return 'pending';
     if (ticket.impreso) return 'printed';
@@ -1001,6 +1093,9 @@ const TicketsPage = () => {
   // Función para obtener las clases CSS según el estado
   const getRowClasses = (ticket) => {
     switch (getTicketPrintStatus(ticket)) {
+      case 'fraude':
+      case 'eliminado':
+        return 'table-danger'; // Rojo: fraude o eliminado del evento
       case 'pending':
         return 'table-warning'; // Amarillo: canjeado, esperando impresión
       case 'completed':
@@ -1450,7 +1545,7 @@ const TicketsPage = () => {
                                   )}
                                 </td>
                                 <td>
-                                  <small>{ticket['Número de Cédula: '] || ticket['Numero de Cedula:'] || '-'}</small>
+                                  <small>{getCedula(ticket) || '-'}</small>
                                 </td>
                                 <td>
                                   <code style={{fontSize: '0.8em'}}>{ticket['Ticket ID']}</code>
@@ -1459,7 +1554,26 @@ const TicketsPage = () => {
                                   <code style={{fontSize: '0.8em'}}>{ticket['Transaction ID']}</code>
                                 </td>
                                 <td>
-                                  {ticket.canjeado ? (
+                                  {isJefe && (
+                                    <button
+                                      className={`btn btn-sm me-1 ${ticket.fraude ? 'btn-danger' : 'btn-outline-danger'}`}
+                                      onClick={() => handleToggleFraude(ticket)}
+                                      title={ticket.fraude
+                                        ? `Marcado como fraude${ticket.motivoFraude ? `: ${ticket.motivoFraude}` : ''}. Click para quitar la marca.`
+                                        : 'Marcar este ticket como fraude (bloquea el canje)'}
+                                    >
+                                      <i className="fas fa-ban"></i> {ticket.fraude ? 'Fraude' : 'Fraude'}
+                                    </button>
+                                  )}
+                                  {ticket.fraude ? (
+                                    <span className="text-danger fw-semibold" style={{ fontSize: '0.8em' }}>
+                                      Canje bloqueado
+                                    </span>
+                                  ) : ticket.eliminado ? (
+                                    <span className="text-danger fw-semibold" style={{ fontSize: '0.8em' }}>
+                                      Eliminado del evento
+                                    </span>
+                                  ) : ticket.canjeado ? (
                                     <button
                                       className="btn btn-success btn-sm"
                                       title="Click para ver detalles del canje"
@@ -1635,7 +1749,7 @@ const TicketsPage = () => {
                     <button
                       type="button"
                       className="btn-close"
-                      onClick={() => { setShowPrintModal(false); setTransactionTicketCount(null); }}
+                      onClick={() => { setShowPrintModal(false); setTicketsTransaccion([]); setTicketsSeleccionados(new Set()); }}
                     ></button>
                   </div>
                   <form onSubmit={handlePrintSubmit}>
@@ -1655,13 +1769,49 @@ const TicketsPage = () => {
                         ) : (
                           selectedTicket['Ticket']
                         )}
+                        <br />
+                        <strong>Cédula:</strong> {getCedula(selectedTicket) || '-'}<br />
+                        <strong>Pago:</strong> {getLast4(selectedTicket)}
                       </div>
 
-                      {transactionTicketCount !== null && transactionTicketCount > 1 && (
-                        <div className="alert alert-warning">
-                          <i className="fas fa-users me-2"></i>
-                          Esta transacción tiene <strong>{transactionTicketCount} tickets</strong> asociados.
-                          Al canjear, se completará esta misma información en todos.
+                      {ticketsTransaccion.length > 0 && (
+                        <div className="card mb-3 border-warning">
+                          <div className="card-header d-flex justify-content-between align-items-center bg-warning-subtle">
+                            <span>
+                              <i className="fas fa-users me-2"></i>
+                              Otros {ticketsTransaccion.length} ticket(s) de esta transacción
+                            </span>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-secondary"
+                              onClick={toggleTodosTicketsTransaccion}
+                            >
+                              {ticketsSeleccionados.size === ticketsTransaccion.length
+                                ? 'Quitar todos'
+                                : 'Seleccionar todos'}
+                            </button>
+                          </div>
+                          <div className="card-body py-2" style={{ maxHeight: 190, overflowY: 'auto' }}>
+                            <small className="text-muted d-block mb-2">
+                              Marca los que se canjean junto con este, con la misma información.
+                            </small>
+                            {ticketsTransaccion.map(t => (
+                              <div className="form-check" key={t['Ticket ID']}>
+                                <input
+                                  className="form-check-input"
+                                  type="checkbox"
+                                  id={`tx-${t['Ticket ID']}`}
+                                  checked={ticketsSeleccionados.has(t['Ticket ID'])}
+                                  onChange={() => toggleTicketTransaccion(t['Ticket ID'])}
+                                />
+                                <label className="form-check-label" htmlFor={`tx-${t['Ticket ID']}`}>
+                                  <code>{t['Ticket ID']}</code>
+                                  {' — '}
+                                  <span className="chip-seat"><i className="bi bi-person-square"></i>{t['Seat']}</span>
+                                </label>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
 
@@ -1749,7 +1899,7 @@ const TicketsPage = () => {
                       <button
                         type="button"
                         className="btn btn-secondary"
-                        onClick={() => { setShowPrintModal(false); setTransactionTicketCount(null); }}
+                        onClick={() => { setShowPrintModal(false); setTicketsTransaccion([]); setTicketsSeleccionados(new Set()); }}
                       >
                         Cancelar
                       </button>

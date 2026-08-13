@@ -11,11 +11,12 @@ const {
   reprintTicket,
   getTicketsByTransaction,
   getTicketByBarcode,
+  marcarFraude,
   getTicketStats,
   canjeTicket,
   bulkCanjeTickets
 } = require('../controllers/ticketController');
-const { importCsv } = require('../controllers/importController');
+const { importCsv, getTicketsEliminados, crearTicketManual } = require('../controllers/importController');
 
 // Multer en memoria: el CSV se procesa al vuelo, nunca se guarda en disco
 const uploadCsv = multer({
@@ -69,6 +70,16 @@ router.get('/transaction/:transactionId', auth, authorize('jefe', 'staff', 'impr
 // @route   GET /api/tickets/barcode/:barcodeData
 // Usado por el escáner (/escanearTicket) para todos los roles operativos
 router.get('/barcode/:barcodeData', auth, authorize('jefe', 'staff', 'impresor_solo', 'impresor_cola'), getTicketByBarcode);
+
+// @route   GET /api/tickets/eliminados
+// Tickets que dejaron de aparecer en el CSV (anulados/reembolsados)
+router.get('/eliminados', auth, authorize('jefe', 'importador'), getTicketsEliminados);
+
+// @route   POST /api/tickets/manual (alta manual, queda como canjeado)
+router.post('/manual', auth, authorize('jefe', 'importador'), crearTicketManual);
+
+// @route   POST /api/tickets/:id/fraude (solo jefe)
+router.post('/:id/fraude', auth, authorize('jefe'), marcarFraude);
 
 // @route   POST /api/tickets/import-csv
 // Sube el CSV del evento tal cual; el backend filtra columnas y agrega

@@ -117,6 +117,42 @@ const ticketSchema = new mongoose.Schema({
   puntoCanje: {
     type: String
   },
+  // Marca de fraude (solo la puede poner/quitar el jefe). Un ticket marcado
+  // no se puede canjear y se muestra en rojo en la tabla.
+  fraude: {
+    type: Boolean,
+    default: false
+  },
+  fechaFraude: {
+    type: Date
+  },
+  motivoFraude: {
+    type: String,
+    trim: true
+  },
+  marcadoFraudePor: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  // Ticket que dejó de aparecer en el CSV del evento (se anuló/reembolsó en
+  // SquadUp). No se borra: se marca para poder auditarlo.
+  eliminado: {
+    type: Boolean,
+    default: false
+  },
+  fechaEliminado: {
+    type: Date
+  },
+  // true si al detectarse como eliminado ya había sido canjeado (caso grave)
+  eliminadoTrasCanje: {
+    type: Boolean,
+    default: false
+  },
+  // Ticket creado a mano desde "Agregar Ticket" (rol importador)
+  creadoManualmente: {
+    type: Boolean,
+    default: false
+  },
   // Control de reimpresiones
   reimpresiones: [{
     fecha: {
@@ -150,6 +186,8 @@ ticketSchema.index({ 'Transaction ID': 1, 'Ticket ID': 1 });
 ticketSchema.index({ 'Ticket': 1 }); // Para búsqueda por localidad - MUY IMPORTANTE
 ticketSchema.index({ impreso: 1, puntoTrabajo: 1 });
 ticketSchema.index({ canjeado: 1, puntoTrabajo: 1 });
+ticketSchema.index({ fraude: 1 });
+ticketSchema.index({ eliminado: 1, fechaEliminado: -1 });
 ticketSchema.index({ updatedAt: -1 }); // Para check-changes - CRÍTICO para performance
 ticketSchema.index({ 'Ticket': 1, updatedAt: -1 }); // Compuesto para check-changes con localidad
 

@@ -328,6 +328,80 @@ const getTicketsByTransaction = async (req, res) => {
   }
 };
 
+// @desc    Marcar / desmarcar un ticket como fraude
+// Un ticket marcado no se puede canjear y se pinta en rojo en la tabla.
+// @route   POST /api/tickets/:id/fraude
+// @access  Private (solo jefe)
+const marcarFraude = async (req, res) => {
+  try {
+    const ticketId = req.params.id;
+    const { fraude, motivo } = req.body;
+
+    if (typeof fraude !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        message: 'El campo "fraude" es obligatorio y debe ser booleano'
+      });
+    }
+
+    const TicketModel = req.TicketModel || Ticket;
+    const ticket = await TicketModel.findOne({ 'Ticket ID': ticketId });
+
+    if (!ticket) {
+      return res.status(404).json({
+        success: false,
+        message: 'Ticket no encontrado'
+      });
+    }
+
+    ticket.fraude = fraude;
+    if (fraude) {
+      ticket.fechaFraude = new Date();
+      ticket.motivoFraude = motivo?.trim() || '';
+      ticket.marcadoFraudePor = req.user._id;
+    } else {
+      ticket.fechaFraude = undefined;
+      ticket.motivoFraude = undefined;
+      ticket.marcadoFraudePor = undefined;
+    }
+
+    await ticket.save();
+
+    const io = req.app.get('io');
+    emitTicketUpdates(io, [ticket], fraude ? 'fraude' : 'fraude-quitado');
+
+    try {
+      await AuditLog.create({
+        tipo: 'fraude',
+        usuario: req.user._id,
+        ticketId: ticket['Ticket ID'].toString(),
+        transactionId: ticket['Transaction ID']?.toString(),
+        puntoTrabajo: req.user.puntoTrabajo,
+        detalles: {
+          accion: fraude ? 'marcar_fraude' : 'quitar_fraude',
+          motivo: motivo?.trim() || ''
+        },
+        ip: req.ip || 'Unknown'
+      });
+    } catch (auditError) {
+      console.error('Error al crear log de auditoría:', auditError);
+    }
+
+    res.json({
+      success: true,
+      message: fraude ? 'Ticket marcado como fraude' : 'Marca de fraude retirada',
+      ticket
+    });
+
+  } catch (error) {
+    console.error('Error al marcar fraude:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+};
+
 // @desc    Buscar un ticket por su código de barras/QR (campo "Barcode Data")
 // Se usa desde el escáner (/escanearTicket). Incluye cuántos tickets tiene
 // asociados la transacción, igual que getTicketsByTransaction.
@@ -470,7 +544,7 @@ const getTicketStats = async (req, res) => {
 // @access  Private
 const canjeTicket = async (req, res) => {
   try {
-    const { quienRetira, parentesco, quienOtro, celular } = req.body;
+    const { quienRetira, parentesco, quienOtro, celular, ticketsSeleccionados } = req.body;
     const ticketId = req.params.id;
 
     // Validaciones básicas
@@ -539,6 +613,22 @@ const canjeTicket = async (req, res) => {
       });
     }
 
+    // Un ticket marcado como fraude no se puede canjear
+    if (ticket.fraude) {
+      return res.status(400).json({
+        success: false,
+        message: 'Este ticket está marcado como FRAUDE y no se puede canjear'
+      });
+    }
+
+    // Tampoco se canjea un ticket que ya no existe en el evento (anulado)
+    if (ticket.eliminado) {
+      return res.status(400).json({
+        success: false,
+        message: 'Este ticket fue eliminado del evento (anulado o reembolsado) y no se puede canjear'
+      });
+    }
+
     // Actualizar ticket con información de canje
     ticket.canjeado = true;
     ticket.fechaCanje = new Date();
@@ -571,17 +661,26 @@ const canjeTicket = async (req, res) => {
     const io = req.app.get('io');
     let ticketsImpresosTransaccion = 0;
 
-    // Propagar la información de canje (quién retira, celular, etc.) a los
-    // demás tickets de la MISMA transacción que todavía no estén canjeados,
-    // ya que se retiran/entregan todos juntos, no ticket por ticket
-    const otrosCanjeados = await propagateCanjeToTransaction(TicketModel, ticket['Transaction ID'], {
-      usuarioId: req.user._id,
-      puntoTrabajo: req.user.puntoTrabajo,
-      quienRetira,
-      celular,
-      parentesco,
-      quienOtro
-    });
+    // Propagar la información de canje SOLO a los tickets que el usuario
+    // eligió en el modal (checkboxes). Si no eligió ninguno, se canjea
+    // únicamente el ticket actual.
+    const seleccionados = Array.isArray(ticketsSeleccionados)
+      ? ticketsSeleccionados.filter(id => id && id !== ticket['Ticket ID'])
+      : [];
+
+    const otrosCanjeados = await propagateCanjeToTransaction(
+      TicketModel,
+      ticket['Transaction ID'],
+      {
+        usuarioId: req.user._id,
+        puntoTrabajo: req.user.puntoTrabajo,
+        quienRetira,
+        celular,
+        parentesco,
+        quienOtro
+      },
+      seleccionados
+    );
     const otrosCanjeadosSinActual = otrosCanjeados.filter(t => t['Ticket ID'] !== ticket['Ticket ID']);
     emitTicketUpdates(io, otrosCanjeadosSinActual, 'canje-transaccion');
 
@@ -657,25 +756,14 @@ const canjeTicket = async (req, res) => {
     // Populate para devolver información completa del usuario
     await ticket.populate('usuarioResponsable', 'nombre usuario email');
 
-    // Emitir evento de Socket.IO para actualización en tiempo real
+    // Emitir a la sala común de tickets para que se actualice en vivo en
+    // TODAS las pantallas abiertas (cualquier rol, cualquier dispositivo)
     if (io) {
-      // Emitir a todos los usuarios del mismo punto de venta
-      if (ticket.puntoVenta) {
-        io.to(`punto-venta-${ticket.puntoVenta}`).emit('ticket-updated', {
-          action: 'canje',
-          ticket: ticket.toObject(),
-          timestamp: new Date().toISOString()
-        });
-      }
-      
-      // Emitir a staff del punto de trabajo
-      if (req.user.puntoTrabajo) {
-        io.to(`staff-${req.user.puntoTrabajo}`).emit('ticket-updated', {
-          action: 'canje',
-          ticket: ticket.toObject(),
-          timestamp: new Date().toISOString()
-        });
-      }
+      io.to('tickets').emit('ticket-updated', {
+        action: 'canje',
+        ticket: ticket.toObject(),
+        timestamp: new Date().toISOString()
+      });
     }
 
     res.json({
@@ -752,9 +840,12 @@ const bulkCanjeTickets = async (req, res) => {
       'Ticket ID': { $in: ticketIds }
     });
 
-    // Separar tickets canjeados y no canjeados
-    const ticketsToRedeem = allTickets.filter(t => !t.canjeado);
-    const alreadyRedeemed = allTickets.filter(t => t.canjeado);
+    // Separar tickets canjeados y no canjeados. Los marcados como fraude o
+    // eliminados quedan fuera: no se pueden canjear.
+    const bloqueados = allTickets.filter(t => t.fraude || t.eliminado);
+    const canjeables = allTickets.filter(t => !t.fraude && !t.eliminado);
+    const ticketsToRedeem = canjeables.filter(t => !t.canjeado);
+    const alreadyRedeemed = canjeables.filter(t => t.canjeado);
 
     if (allTickets.length === 0) {
       return res.status(404).json({
@@ -808,25 +899,10 @@ const bulkCanjeTickets = async (req, res) => {
 
     const bulkResult = await TicketModel.bulkWrite(bulkOps);
 
-    // Propagar la información de canje a otros tickets de las MISMAS
-    // transacciones que no fueron seleccionados explícitamente en este lote,
-    // ya que se retiran/entregan todos juntos, no ticket por ticket
-    const transaccionesUnicas = [...new Set(ticketsToRedeem.map(t => t['Transaction ID']))];
-    const seleccionadosSet = new Set(ticketIds);
+    // En el canje masivo NO se propaga a otros tickets de la transacción:
+    // aquí la selección ya es explícita (el usuario marcó exactamente los
+    // tickets que quería canjear con las casillas de la tabla).
     const ticketsPropagadosExtra = [];
-    for (const transactionId of transaccionesUnicas) {
-      const afectados = await propagateCanjeToTransaction(TicketModel, transactionId, {
-        usuarioId: req.user._id,
-        puntoTrabajo: req.user.puntoTrabajo,
-        quienRetira,
-        celular,
-        parentesco,
-        quienOtro
-      });
-      afectados.forEach(t => {
-        if (!seleccionadosSet.has(t['Ticket ID'])) ticketsPropagadosExtra.push(t);
-      });
-    }
 
     // Crear logs de auditoría solo para los tickets canjeados ahora
     const auditLogs = ticketsToRedeem.map(ticket => {
@@ -892,28 +968,10 @@ const bulkCanjeTickets = async (req, res) => {
       'Ticket ID': { $in: ticketIds }
     }).populate('usuarioResponsable', 'nombre usuario email');
 
-    // Emitir eventos de Socket.IO
+    // Emitir eventos de Socket.IO a la sala común de tickets
     const io = req.app.get('io');
     emitTicketUpdates(io, ticketsPropagadosExtra, 'canje-transaccion');
-    if (io) {
-      updatedTickets.forEach(ticket => {
-        if (ticket.puntoVenta) {
-          io.to(`punto-venta-${ticket.puntoVenta}`).emit('ticket-updated', {
-            action: 'canje',
-            ticket: ticket.toObject(),
-            timestamp: new Date().toISOString()
-          });
-        }
-
-        if (req.user.puntoTrabajo) {
-          io.to(`staff-${req.user.puntoTrabajo}`).emit('ticket-updated', {
-            action: 'canje',
-            ticket: ticket.toObject(),
-            timestamp: new Date().toISOString()
-          });
-        }
-      });
-    }
+    emitTicketUpdates(io, updatedTickets, 'canje');
 
     // Rol impresor_solo: propagar impresión a TODOS los tickets de la misma
     // transacción y tipo (hayan sido canjeados o no), ya que la impresión en
@@ -1000,6 +1058,7 @@ module.exports = {
   reprintTicket,
   getTicketsByTransaction,
   getTicketByBarcode,
+  marcarFraude,
   getTicketStats,
   canjeTicket,
   bulkCanjeTickets
