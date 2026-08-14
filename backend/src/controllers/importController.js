@@ -61,6 +61,91 @@ const importCsv = async (req, res) => {
       });
     }
 
+    // --- Reconciliar con tickets creados a mano ("Agregar Ticket") ---
+    // Un ticket manual nace con un Ticket ID sintético (MANUAL-...), no con
+    // el real de SquadUp. Si el CSV trae la fila real de esa misma persona
+    // (misma Transaction ID + mismo email), se completa el ticket manual con
+    // los datos reales (Ticket ID, Seat, Barcode Data, etc.) en vez de
+    // crearlo como un ticket nuevo aparte, y ya no se vuelve a marcar como
+    // "eliminado" en futuras importaciones.
+    const claveManual = (transactionId, email) =>
+      `${transactionId}||${(email || '').trim().toLowerCase()}`;
+
+    const manualesSinReconciliar = await TicketModel.find({
+      creadoManualmente: true,
+      reconciliadoConCsv: { $ne: true }
+    });
+
+    const manualPorClave = new Map();
+    manualesSinReconciliar.forEach(m => {
+      const clave = claveManual(m['Transaction ID'], m['Email']);
+      if (!manualPorClave.has(clave)) manualPorClave.set(clave, []);
+      manualPorClave.get(clave).push(m);
+    });
+
+    const reconciliaciones = [];
+    const candidatosRestantes = [];
+
+    for (const candidato of candidatos) {
+      const clave = claveManual(candidato['Transaction ID'], candidato['Email']);
+      const posibles = manualPorClave.get(clave);
+
+      if (!posibles || posibles.length === 0) {
+        candidatosRestantes.push(candidato);
+        continue;
+      }
+
+      // Si hay más de un manual pendiente para la misma transacción+email,
+      // se prioriza el que coincida también en tipo de ticket (localidad)
+      const idx = posibles.findIndex(m => m['Ticket'] === candidato['Ticket']);
+      const manual = posibles.splice(idx >= 0 ? idx : 0, 1)[0];
+      if (posibles.length === 0) manualPorClave.delete(clave);
+
+      // No reconciliar si el Ticket ID real ya existe como documento aparte
+      // (evita chocar con el índice único de Ticket ID)
+      const yaExisteSeparado = await TicketModel.exists({ 'Ticket ID': candidato['Ticket ID'] });
+      if (yaExisteSeparado) {
+        candidatosRestantes.push(candidato);
+        continue;
+      }
+
+      reconciliaciones.push({ manualTicketId: manual['Ticket ID'], candidato });
+    }
+
+    const ahoraReconciliacion = new Date();
+    const ticketsReconciliados = [];
+    for (const { manualTicketId, candidato } of reconciliaciones) {
+      await TicketModel.collection.updateOne(
+        { 'Ticket ID': manualTicketId },
+        {
+          $set: {
+            'Ticket ID': candidato['Ticket ID'],
+            'Seat': candidato['Seat'],
+            'Ticket': candidato['Ticket'],
+            'Barcode Data': candidato['Barcode Data'],
+            'Transaction Date (Local)': candidato['Transaction Date (Local)'],
+            reconciliadoConCsv: true,
+            fechaReconciliacion: ahoraReconciliacion,
+            ticketIdManualOriginal: manualTicketId
+          }
+        }
+      );
+      const actualizado = await TicketModel.findOne({ 'Ticket ID': candidato['Ticket ID'] });
+      if (actualizado) ticketsReconciliados.push(actualizado);
+    }
+
+    // De acá en adelante, los candidatos ya reconciliados NO se procesan
+    // como nuevos ni se cuentan como "ya existían": se resolvieron aparte.
+    candidatos.length = 0;
+    candidatos.push(...candidatosRestantes);
+
+    if (candidatos.length === 0 && reconciliaciones.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No se encontró ningún ticket válido en el archivo (revise que tenga las columnas correctas)'
+      });
+    }
+
     // Averiguar cuáles ya existen para no tocarlos
     const idsCandidatos = candidatos.map(d => d['Ticket ID']);
     // OJO: la proyección va como objeto, NO como string. Mongoose interpreta
@@ -111,9 +196,22 @@ const importCsv = async (req, res) => {
     // que se anuló/reembolsó en SquadUp. No se borra: se marca como
     // eliminado para poder auditarlo, y se separan los que además ya
     // habían sido canjeados (caso grave: alguien ya retiró ese boleto).
-    const idsEnArchivo = new Set(candidatos.map(d => d['Ticket ID']));
+    // OJO: los reconciliados ya no están en "candidatos" (se sacaron arriba),
+    // pero sí vienen en el archivo, así que hay que incluirlos acá también.
+    const idsEnArchivo = new Set([
+      ...candidatos.map(d => d['Ticket ID']),
+      ...reconciliaciones.map(r => r.candidato['Ticket ID'])
+    ]);
 
-    const enBase = await TicketModel.find({ eliminado: { $ne: true } })
+    // Los manuales sin reconciliar NUNCA van a aparecer en un CSV real (su ID
+    // es sintético), así que quedan exentos de la detección de eliminados.
+    const enBase = await TicketModel.find({
+      eliminado: { $ne: true },
+      $or: [
+        { creadoManualmente: { $ne: true } },
+        { reconciliadoConCsv: true }
+      ]
+    })
       .select({ 'Ticket ID': 1, canjeado: 1 })
       .lean();
 
@@ -140,6 +238,7 @@ const importCsv = async (req, res) => {
       totalEnArchivo: filas.length,
       yaExistian,
       nuevosAgregados: insertados,
+      reconciliados: reconciliaciones.length,
       omitidosPorDatosIncompletos,
       erroresInsercion,
       eliminados: idsDesaparecidos.length,
@@ -184,6 +283,11 @@ const importCsv = async (req, res) => {
         });
       }
 
+      // Pintar en vivo los tickets recién reconciliados (ya con su Ticket ID real)
+      if (ticketsReconciliados.length > 0) {
+        emitTicketUpdates(io, ticketsReconciliados, 'ticket-reconciliado');
+      }
+
       // Pintar en vivo los tickets que quedaron marcados como eliminados
       if (ticketsEliminados.length > 0) {
         emitTicketUpdates(io, ticketsEliminados, 'ticket-eliminado');
@@ -199,6 +303,9 @@ const importCsv = async (req, res) => {
     }
 
     let message = `${insertados} ticket(s) nuevo(s) agregado(s). ${yaExistian} ya existían y no se modificaron.`;
+    if (reconciliaciones.length > 0) {
+      message += ` ${reconciliaciones.length} ticket(s) agregado(s) manualmente se completaron con los datos reales del CSV.`;
+    }
     if (idsDesaparecidos.length > 0) {
       message += ` ${idsDesaparecidos.length} ya no están en el archivo y se marcaron como eliminados`;
       if (eliminadosTrasCanje.length > 0) {

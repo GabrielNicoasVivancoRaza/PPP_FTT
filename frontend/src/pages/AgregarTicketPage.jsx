@@ -90,9 +90,16 @@ const AgregarTicketPage = () => {
         <h2 className="mb-1">Agregar Ticket</h2>
         <p className="text-muted mb-0">
           Alta manual de un boleto que no vino en el CSV (por ejemplo, una venta en puerta).
-          Se registra directamente como <strong>canjeado</strong> y con el mismo formato que
-          los importados, para que una importación posterior no lo duplique.
+          Se registra directamente como <strong>canjeado</strong>.
         </p>
+      </div>
+
+      <div className="alert alert-info">
+        <i className="fas fa-circle-info me-2"></i>
+        Cuando más adelante se suba el CSV oficial, si trae una fila con la <strong>misma
+        Transaction ID y el mismo Email</strong>, este ticket se completa automáticamente con los
+        datos reales (Ticket ID, asiento, código de barras) — no se duplica ni se marca como
+        eliminado por no tener el ID original de SquadUp.
       </div>
 
       <div className="row g-4">

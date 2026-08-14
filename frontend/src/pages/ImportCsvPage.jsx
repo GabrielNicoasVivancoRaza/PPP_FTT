@@ -48,10 +48,13 @@ const ImportCsvPage = () => {
         setArchivo(null);
         if (inputRef.current) inputRef.current.value = '';
 
-        const { nuevosAgregados, yaExistian, eliminados = 0, eliminadosYaCanjeados = 0 } = response.data;
+        const { nuevosAgregados, yaExistian, reconciliados = 0, eliminados = 0, eliminadosYaCanjeados = 0 } = response.data;
 
         let html = `<strong>${nuevosAgregados}</strong> ticket(s) nuevo(s) agregado(s)<br/>` +
                    `${yaExistian} ya existían (sin modificar)`;
+        if (reconciliados > 0) {
+          html += `<br/><strong>${reconciliados}</strong> ticket(s) agregado(s) manualmente se completaron con el CSV real`;
+        }
         if (eliminados > 0) {
           html += `<br/><span class="text-danger"><strong>${eliminados}</strong> ya no están en el archivo y se marcaron como eliminados</span>`;
           if (eliminadosYaCanjeados > 0) {
@@ -67,7 +70,25 @@ const ImportCsvPage = () => {
       }
     } catch (error) {
       console.error('Error al importar CSV:', error);
-      Swal.fire('Error', error.response?.data?.message || 'No se pudo importar el archivo', 'error');
+
+      // Sin error.response = no llegó respuesta del servidor (se cortó la
+      // conexión, timeout, etc.). Con archivos grandes el backend puede
+      // seguir procesando y terminar bien aunque el navegador ya haya
+      // abandonado la espera, así que NO se debe asumir que no pasó nada.
+      if (!error.response) {
+        Swal.fire({
+          title: 'No se recibió respuesta del servidor',
+          html:
+            'La importación puede seguir procesándose o haber terminado del lado del servidor, ' +
+            'aunque el navegador dejó de esperar.<br/><br/>' +
+            '<strong>Antes de volver a subir el archivo</strong>, revisa la lista de tickets o la ' +
+            'sección de Auditoría para confirmar si ya se aplicó. Si vuelves a subirlo, no hay ' +
+            'problema: los que ya existan no se van a duplicar ni modificar.',
+          icon: 'warning'
+        });
+      } else {
+        Swal.fire('Error', error.response?.data?.message || 'No se pudo importar el archivo', 'error');
+      }
     } finally {
       setSubiendo(false);
     }
@@ -133,6 +154,12 @@ const ImportCsvPage = () => {
                     <span className="badge bg-secondary me-2">{ultimoResultado.yaExistian}</span>
                     ya existían (no se tocaron)
                   </li>
+                  {ultimoResultado.reconciliados > 0 && (
+                    <li className="mb-2">
+                      <span className="badge bg-info text-dark me-2">{ultimoResultado.reconciliados}</span>
+                      agregados manualmente y completados con el CSV real
+                    </li>
+                  )}
                   {ultimoResultado.omitidosPorDatosIncompletos > 0 && (
                     <li className="mb-2">
                       <span className="badge bg-warning text-dark me-2">{ultimoResultado.omitidosPorDatosIncompletos}</span>

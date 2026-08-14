@@ -148,10 +148,27 @@ const ticketSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
-  // Ticket creado a mano desde "Agregar Ticket" (rol importador)
+  // Ticket creado a mano desde "Agregar Ticket" (rol importador). Nace con
+  // un Ticket ID sintético (no viene de SquadUp), así que se excluye de la
+  // detección de "eliminados" mientras no se reconcilie con el CSV real.
   creadoManualmente: {
     type: Boolean,
     default: false
+  },
+  // true cuando una importación posterior encontró la fila real de SquadUp
+  // (misma Transaction ID + email) y completó Ticket ID/Seat/Barcode Data.
+  // A partir de ahí el ticket se comporta como uno normal.
+  reconciliadoConCsv: {
+    type: Boolean,
+    default: false
+  },
+  fechaReconciliacion: {
+    type: Date
+  },
+  // Se guarda el ID sintético original por si algún log de auditoría viejo
+  // lo referencia
+  ticketIdManualOriginal: {
+    type: String
   },
   // Control de reimpresiones
   reimpresiones: [{
