@@ -5,7 +5,10 @@ const { createAuditLog } = require('../utils/auditLogger');
 // Obtener todos los puntos de venta
 const getPuntosVenta = async (req, res) => {
   try {
-    const puntosVenta = await PuntoVenta.find({ activo: true })
+    // Se listan todos (activos e inactivos): con el botón de desactivar ya
+    // no es un borrado, así que debe seguir viéndose en la lista para poder
+    // reactivarlo más adelante.
+    const puntosVenta = await PuntoVenta.find({})
       .populate('creadoPor', 'nombre usuario')
       .sort({ nombre: 1 });
     
@@ -81,7 +84,7 @@ const createPuntoVenta = async (req, res) => {
 const updatePuntoVenta = async (req, res) => {
   try {
     const { id } = req.params;
-    const { nombre, descripcion, localidades } = req.body;
+    const { nombre, descripcion, localidades, activo } = req.body;
 
     const puntoVenta = await PuntoVenta.findById(id);
     if (!puntoVenta) {
@@ -93,7 +96,7 @@ const updatePuntoVenta = async (req, res) => {
 
     // Si se cambia el nombre, verificar que no exista otro con el mismo nombre
     if (nombre && nombre.trim() !== puntoVenta.nombre) {
-      const existingPunto = await PuntoVenta.findOne({ 
+      const existingPunto = await PuntoVenta.findOne({
         nombre: nombre.trim(),
         _id: { $ne: id }
       });
@@ -109,6 +112,7 @@ const updatePuntoVenta = async (req, res) => {
     if (nombre) puntoVenta.nombre = nombre.trim();
     if (descripcion !== undefined) puntoVenta.descripcion = descripcion?.trim();
     if (localidades) puntoVenta.localidades = localidades;
+    if (typeof activo === 'boolean') puntoVenta.activo = activo;
 
     await puntoVenta.save();
     await puntoVenta.populate('creadoPor', 'nombre usuario');
@@ -167,6 +171,43 @@ const deletePuntoVenta = async (req, res) => {
     });
   } catch (error) {
     console.error('Error al eliminar punto de venta:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+};
+
+// Eliminar punto de venta permanentemente (borra el documento de la BD)
+const hardDeletePuntoVenta = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const puntoVenta = await PuntoVenta.findById(id);
+    if (!puntoVenta) {
+      return res.status(404).json({
+        success: false,
+        message: 'Punto de venta no encontrado'
+      });
+    }
+
+    const nombre = puntoVenta.nombre;
+    await puntoVenta.deleteOne();
+
+    await createAuditLog(
+      req.user._id,
+      'DELETE_PERMANENT',
+      'PuntoVenta',
+      id,
+      `Punto de venta eliminado permanentemente: ${nombre}`
+    );
+
+    res.json({
+      success: true,
+      message: 'Punto de venta eliminado permanentemente'
+    });
+  } catch (error) {
+    console.error('Error al eliminar punto de venta permanentemente:', error);
     res.status(500).json({
       success: false,
       message: 'Error interno del servidor'
@@ -740,6 +781,7 @@ module.exports = {
   createPuntoVenta,
   updatePuntoVenta,
   deletePuntoVenta,
+  hardDeletePuntoVenta,
   getTicketsByPuntoVenta,
   getEstadisticasPuntoVenta,
   getTicketsForStaff,

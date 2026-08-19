@@ -21,7 +21,7 @@ const propagateCanjeToTransaction = async (
     return [];
   }
 
-  const { usuarioId, puntoTrabajo, quienRetira, celular, parentesco, quienOtro } = canjeInfo;
+  const { usuarioId, puntoTrabajo, quienRetira, celular, cedulaQuienRetira, parentesco, quienOtro } = canjeInfo;
 
   const setFields = {
     canjeado: true,
@@ -31,7 +31,8 @@ const propagateCanjeToTransaction = async (
     puntoTrabajo,
     puntoCanje: puntoTrabajo,
     quienRetira,
-    celular
+    celular,
+    cedulaQuienRetira
   };
 
   const unsetFields = {};

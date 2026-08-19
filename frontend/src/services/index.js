@@ -95,6 +95,13 @@ export const ticketService = {
     return response.data;
   },
 
+  // Colocar / quitar una nota informativa en un ticket (solo jefe). Enviar
+  // informacion vacío quita la nota.
+  marcarInformacion: async (ticketId, informacion = '') => {
+    const response = await api.post(`/tickets/${ticketId}/informacion`, { informacion });
+    return response.data;
+  },
+
   // Tickets que dejaron de aparecer en el CSV (anulados)
   getTicketsEliminados: async (params = {}) => {
     const response = await api.get('/tickets/eliminados', { params });

@@ -102,6 +102,15 @@ const ticketSchema = new mongoose.Schema({
       return this.quienRetira && this.quienRetira.length > 0;
     }
   },
+  // Cédula de quien retira físicamente el ticket (puede ser distinta a la
+  // cédula del comprador que trae el CSV en 'Numero de Cedula:')
+  cedulaQuienRetira: {
+    type: String,
+    trim: true,
+    required: function() {
+      return this.quienRetira && this.quienRetira.length > 0;
+    }
+  },
   // Campos de control de canje
   canjeado: {
     type: Boolean,
@@ -131,6 +140,20 @@ const ticketSchema = new mongoose.Schema({
     trim: true
   },
   marcadoFraudePor: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  // Nota informativa que el jefe puede colocar en cualquier ticket. Se
+  // muestra en gris para todos los roles y NO bloquea el canje (a
+  // diferencia de fraude).
+  informacion: {
+    type: String,
+    trim: true
+  },
+  fechaInformacion: {
+    type: Date
+  },
+  colocadoInformacionPor: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },

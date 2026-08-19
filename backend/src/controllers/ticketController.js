@@ -4,7 +4,7 @@ const PrinterSettings = require('../models/PrinterSettings');
 const { createOrExtendPrintRequest } = require('./printRequestController');
 const { getUnprintedTransactionTicketIds, markTransactionPrinted, emitTicketUpdates } = require('../utils/printHelpers');
 const { propagateCanjeToTransaction } = require('../utils/canjeHelpers');
-const { isValidPhone, isValidName } = require('../utils/validators');
+const { isValidPhone, isValidName, isValidCedula } = require('../utils/validators');
 
 // Resuelve el color configurado para un tipo de ticket (campo "Ticket")
 const resolveColor = (ticketColors, tipo) => {
@@ -402,6 +402,74 @@ const marcarFraude = async (req, res) => {
   }
 };
 
+// @desc    Colocar/quitar una nota informativa en un ticket (solo jefe). Se
+// muestra en gris para todos los roles y NO bloquea el canje, a diferencia
+// de la marca de fraude.
+// @route   POST /api/tickets/:id/informacion
+// @access  Private (solo jefe)
+const marcarInformacion = async (req, res) => {
+  try {
+    const ticketId = req.params.id;
+    const { informacion } = req.body;
+    const texto = (informacion || '').trim();
+
+    const TicketModel = req.TicketModel || Ticket;
+    const ticket = await TicketModel.findOne({ 'Ticket ID': ticketId });
+
+    if (!ticket) {
+      return res.status(404).json({
+        success: false,
+        message: 'Ticket no encontrado'
+      });
+    }
+
+    if (texto) {
+      ticket.informacion = texto;
+      ticket.fechaInformacion = new Date();
+      ticket.colocadoInformacionPor = req.user._id;
+    } else {
+      ticket.informacion = undefined;
+      ticket.fechaInformacion = undefined;
+      ticket.colocadoInformacionPor = undefined;
+    }
+
+    await ticket.save();
+
+    const io = req.app.get('io');
+    emitTicketUpdates(io, [ticket], texto ? 'informacion' : 'informacion-quitada');
+
+    try {
+      await AuditLog.create({
+        tipo: 'informacion',
+        usuario: req.user._id,
+        ticketId: ticket['Ticket ID'].toString(),
+        transactionId: ticket['Transaction ID']?.toString(),
+        puntoTrabajo: req.user.puntoTrabajo,
+        detalles: {
+          accion: texto ? 'colocar_informacion' : 'quitar_informacion',
+          informacion: texto
+        },
+        ip: req.ip || 'Unknown'
+      });
+    } catch (auditError) {
+      console.error('Error al crear log de auditoría:', auditError);
+    }
+
+    res.json({
+      success: true,
+      message: texto ? 'Información guardada' : 'Información retirada',
+      ticket
+    });
+
+  } catch (error) {
+    console.error('Error al colocar información:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+};
+
 // @desc    Buscar un ticket por su código de barras/QR (campo "Barcode Data")
 // Se usa desde el escáner (/escanearTicket). Incluye cuántos tickets tiene
 // asociados la transacción, igual que getTicketsByTransaction.
@@ -544,14 +612,14 @@ const getTicketStats = async (req, res) => {
 // @access  Private
 const canjeTicket = async (req, res) => {
   try {
-    const { quienRetira, parentesco, quienOtro, celular, ticketsSeleccionados } = req.body;
+    const { quienRetira, parentesco, quienOtro, celular, cedulaQuienRetira, ticketsSeleccionados } = req.body;
     const ticketId = req.params.id;
 
     // Validaciones básicas
-    if (!quienRetira || !celular) {
+    if (!quienRetira || !celular || !cedulaQuienRetira) {
       return res.status(400).json({
         success: false,
-        message: 'Quien retira y celular son campos obligatorios'
+        message: 'Quien retira, cédula y celular son campos obligatorios'
       });
     }
 
@@ -559,6 +627,13 @@ const canjeTicket = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'El celular debe contener solo números (7 a 15 dígitos)'
+      });
+    }
+
+    if (!isValidCedula(cedulaQuienRetira)) {
+      return res.status(400).json({
+        success: false,
+        message: 'La cédula debe contener solo números (5 a 15 dígitos)'
       });
     }
 
@@ -638,6 +713,7 @@ const canjeTicket = async (req, res) => {
     ticket.puntoCanje = req.user.puntoTrabajo;
     ticket.quienRetira = quienRetira;
     ticket.celular = celular;
+    ticket.cedulaQuienRetira = cedulaQuienRetira;
 
     // Solo establecer campos adicionales si es "Otro"
     if (quienRetira === 'Otro') {
@@ -676,6 +752,7 @@ const canjeTicket = async (req, res) => {
         puntoTrabajo: req.user.puntoTrabajo,
         quienRetira,
         celular,
+        cedulaQuienRetira,
         parentesco,
         quienOtro
       },
@@ -793,7 +870,7 @@ const canjeTicket = async (req, res) => {
 const bulkCanjeTickets = async (req, res) => {
   try {
     const { ticketIds, canjeData } = req.body;
-    const { quienRetira, parentesco, celular, quienOtro } = canjeData;
+    const { quienRetira, parentesco, celular, cedulaQuienRetira, quienOtro } = canjeData;
 
     // Validaciones
     if (!Array.isArray(ticketIds) || ticketIds.length === 0) {
@@ -803,10 +880,10 @@ const bulkCanjeTickets = async (req, res) => {
       });
     }
 
-    if (!quienRetira || !celular) {
+    if (!quienRetira || !celular || !cedulaQuienRetira) {
       return res.status(400).json({
         success: false,
-        message: 'Quien retira y celular son campos obligatorios'
+        message: 'Quien retira, cédula y celular son campos obligatorios'
       });
     }
 
@@ -814,6 +891,13 @@ const bulkCanjeTickets = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'El celular debe contener solo números (7 a 15 dígitos)'
+      });
+    }
+
+    if (!isValidCedula(cedulaQuienRetira)) {
+      return res.status(400).json({
+        success: false,
+        message: 'La cédula debe contener solo números (5 a 15 dígitos)'
       });
     }
 
@@ -874,7 +958,8 @@ const bulkCanjeTickets = async (req, res) => {
       puntoTrabajo: req.user.puntoTrabajo,
       puntoCanje: req.user.puntoTrabajo,
       quienRetira,
-      celular
+      celular,
+      cedulaQuienRetira
     };
 
     if (quienRetira === 'Otro') {
@@ -1059,6 +1144,7 @@ module.exports = {
   getTicketsByTransaction,
   getTicketByBarcode,
   marcarFraude,
+  marcarInformacion,
   getTicketStats,
   canjeTicket,
   bulkCanjeTickets

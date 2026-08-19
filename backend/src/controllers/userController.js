@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const { isValidName } = require('../utils/validators');
+const { createUserAuditLog } = require('../utils/auditLogger');
 
 // @desc    Crear nuevo usuario
 // @route   POST /api/users
@@ -71,7 +72,10 @@ const createUser = async (req, res) => {
 // @access  Private (solo jefe)
 const getUsers = async (req, res) => {
   try {
-    const users = await User.find({ activo: true })
+    // Se listan todos (activos e inactivos): con el botón de desactivar ya
+    // no es un borrado, así que el usuario debe seguir viéndose en la lista
+    // (con su estado) para poder reactivarlo más adelante.
+    const users = await User.find({})
       .populate('creadoPor', 'nombre usuario')
       .sort({ createdAt: -1 });
 
@@ -181,9 +185,57 @@ const deleteUser = async (req, res) => {
   }
 };
 
+// @desc    Eliminar usuario permanentemente (borra el documento de la BD)
+// @route   DELETE /api/users/:id/permanent
+// @access  Private (solo jefe)
+const hardDeleteUser = async (req, res) => {
+  try {
+    const userId = req.params.id;
+
+    if (userId === req.user._id.toString()) {
+      return res.status(400).json({
+        success: false,
+        message: 'No puedes eliminar tu propia cuenta'
+      });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Usuario no encontrado'
+      });
+    }
+
+    const { usuario, nombre, rol } = user;
+    await user.deleteOne();
+
+    await createUserAuditLog(
+      req.user._id,
+      'DELETE_PERMANENT',
+      userId,
+      `Usuario eliminado permanentemente: ${usuario}`,
+      { usuarioEliminado: usuario, nombreEliminado: nombre, rolEliminado: rol }
+    );
+
+    res.json({
+      success: true,
+      message: 'Usuario eliminado permanentemente'
+    });
+
+  } catch (error) {
+    console.error('Error al eliminar usuario permanentemente:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+};
+
 module.exports = {
   createUser,
   getUsers,
   updateUser,
-  deleteUser
+  deleteUser,
+  hardDeleteUser
 };

@@ -5,6 +5,7 @@ const {
   createPuntoVenta,
   updatePuntoVenta,
   deletePuntoVenta,
+  hardDeletePuntoVenta,
   getTicketsByPuntoVenta,
   getEstadisticasPuntoVenta,
   getTicketsForStaff,
@@ -35,6 +36,9 @@ router.route('/')
 router.route('/:id')
   .put(auth, authorize('jefe'), updatePuntoVenta)
   .delete(auth, authorize('jefe'), deletePuntoVenta);
+
+// Borrado permanente (borra el documento de la BD, distinto de desactivar)
+router.delete('/:id/permanent', auth, authorize('jefe'), hardDeletePuntoVenta);
 
 // Rutas específicas
 router.get('/:id/tickets', auth, getTicketsByPuntoVenta);

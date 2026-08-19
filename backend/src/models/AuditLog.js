@@ -4,7 +4,7 @@ const auditLogSchema = new mongoose.Schema({
   tipo: {
     type: String,
     required: true,
-    enum: ['impresion', 'reimpresion', 'impresion_cola', 'config_impresion', 'canje', 'canje_masivo', 'importacion_csv', 'fraude', 'ticket_manual', 'tickets_eliminados', 'login', 'logout', 'creacion_usuario', 'cambio_password']
+    enum: ['impresion', 'reimpresion', 'impresion_cola', 'config_impresion', 'canje', 'canje_masivo', 'importacion_csv', 'fraude', 'informacion', 'ticket_manual', 'tickets_eliminados', 'login', 'logout', 'creacion_usuario', 'cambio_password', 'eliminacion_permanente']
   },
   usuario: {
     type: mongoose.Schema.Types.ObjectId,

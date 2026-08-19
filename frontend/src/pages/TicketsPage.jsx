@@ -6,7 +6,7 @@ import socketService from '../services/socket';
 import { printerSettingsService, ticketService } from '../services';
 import { useScanSession } from '../context/ScanSessionContext';
 import { getCedula, getLast4 } from '../utils/ticketFields';
-import { onlyDigits, onlyLetters, isValidPhone, isValidName } from '../utils/validators';
+import { onlyDigits, onlyLetters, isValidPhone, isValidName, isValidCedula } from '../utils/validators';
 import Swal from 'sweetalert2';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
@@ -45,7 +45,8 @@ const TicketsPage = () => {
     quienRetira: '',
     parentesco: '',
     quienOtro: '',
-    celular: ''
+    celular: '',
+    cedulaQuienRetira: ''
   });
   const [error, setError] = useState('');
   
@@ -56,7 +57,8 @@ const TicketsPage = () => {
     quienRetira: '',
     parentesco: '',
     quienOtro: '',
-    celular: ''
+    celular: '',
+    cedulaQuienRetira: ''
   });
   
   // Estado para modal de información de canje
@@ -415,7 +417,8 @@ const TicketsPage = () => {
                 oldTicket.canjeado !== newTicket.canjeado ||
                 oldTicket.impreso !== newTicket.impreso ||
                 oldTicket.quienRetira !== newTicket.quienRetira ||
-                oldTicket.fechaCanje !== newTicket.fechaCanje) {
+                oldTicket.fechaCanje !== newTicket.fechaCanje ||
+                oldTicket.informacion !== newTicket.informacion) {
               hasChanges = true;
               break;
             }
@@ -498,7 +501,8 @@ const TicketsPage = () => {
                 oldTicket.canjeado !== newTicket.canjeado ||
                 oldTicket.impreso !== newTicket.impreso ||
                 oldTicket.quienRetira !== newTicket.quienRetira ||
-                oldTicket.fechaCanje !== newTicket.fechaCanje) {
+                oldTicket.fechaCanje !== newTicket.fechaCanje ||
+                oldTicket.informacion !== newTicket.informacion) {
               hasChanges = true;
               break;
             }
@@ -579,7 +583,8 @@ const TicketsPage = () => {
                 oldTicket.canjeado !== newTicket.canjeado ||
                 oldTicket.impreso !== newTicket.impreso ||
                 oldTicket.quienRetira !== newTicket.quienRetira ||
-                oldTicket.fechaCanje !== newTicket.fechaCanje) {
+                oldTicket.fechaCanje !== newTicket.fechaCanje ||
+                oldTicket.informacion !== newTicket.informacion) {
               hasChanges = true;
               break;
             }
@@ -729,6 +734,16 @@ const TicketsPage = () => {
       return;
     }
 
+    if (!printForm.cedulaQuienRetira) {
+      Swal.fire('Falta información', 'La cédula de quien retira el ticket es obligatoria', 'warning');
+      return;
+    }
+
+    if (!isValidCedula(printForm.cedulaQuienRetira)) {
+      Swal.fire('Cédula inválida', 'La cédula debe contener solo números (5 a 15 dígitos)', 'warning');
+      return;
+    }
+
     if (printForm.quienRetira === 'Otro') {
       if (!printForm.parentesco) {
         Swal.fire('Falta información', 'Debe seleccionar el parentesco cuando selecciona "Otro"', 'warning');
@@ -755,7 +770,8 @@ const TicketsPage = () => {
         // Preparar datos del canje
         const canjeData = {
           quienRetira: printForm.quienRetira,
-          celular: printForm.celular
+          celular: printForm.celular,
+          cedulaQuienRetira: printForm.cedulaQuienRetira
         };
 
         // Solo agregar campos adicionales si es "Otro"
@@ -789,7 +805,7 @@ const TicketsPage = () => {
       }
 
       setShowPrintModal(false);
-      setPrintForm({ quienRetira: '', parentesco: '', quienOtro: '', celular: '' });
+      setPrintForm({ quienRetira: '', parentesco: '', quienOtro: '', celular: '', cedulaQuienRetira: '' });
       setTicketsTransaccion([]); setTicketsSeleccionados(new Set());
 
       // Actualización suave inmediata (silenciosa)
@@ -906,6 +922,16 @@ const TicketsPage = () => {
       return;
     }
 
+    if (!bulkCanjeForm.cedulaQuienRetira) {
+      Swal.fire('Falta información', 'La cédula de quien retira los tickets es obligatoria', 'warning');
+      return;
+    }
+
+    if (!isValidCedula(bulkCanjeForm.cedulaQuienRetira)) {
+      Swal.fire('Cédula inválida', 'La cédula debe contener solo números (5 a 15 dígitos)', 'warning');
+      return;
+    }
+
     if (bulkCanjeForm.quienRetira === 'Otro') {
       if (!bulkCanjeForm.parentesco) {
         Swal.fire('Falta información', 'Debe seleccionar el parentesco cuando selecciona "Otro"', 'warning');
@@ -940,7 +966,8 @@ const TicketsPage = () => {
     try {
       const canjeData = {
         quienRetira: bulkCanjeForm.quienRetira,
-        celular: bulkCanjeForm.celular
+        celular: bulkCanjeForm.celular,
+        cedulaQuienRetira: bulkCanjeForm.cedulaQuienRetira
       };
 
       if (bulkCanjeForm.quienRetira === 'Otro') {
@@ -970,7 +997,7 @@ const TicketsPage = () => {
         // Limpiar selección y cerrar modal
         setSelectedTickets(new Set());
         setShowBulkCanjeModal(false);
-        setBulkCanjeForm({ quienRetira: '', parentesco: '', quienOtro: '', celular: '' });
+        setBulkCanjeForm({ quienRetira: '', parentesco: '', quienOtro: '', celular: '', cedulaQuienRetira: '' });
 
         // Actualizar tickets SIN resetear filtros
         await refreshTicketsData(true);
@@ -1031,6 +1058,55 @@ const TicketsPage = () => {
     }
   };
 
+  // Colocar / editar / quitar una nota informativa en un ticket (solo jefe).
+  // A diferencia de fraude, NO bloquea el canje: solo pinta la fila de gris
+  // y muestra el texto a todos los roles.
+  const handleSetInformacion = async (ticket) => {
+    const result = await Swal.fire({
+      title: ticket.informacion ? 'Editar información' : 'Colocar información',
+      html: `Ticket <code>${ticket['Ticket ID']}</code> — ${ticket['First Name'] || ''} ${ticket['Last Name'] || ''}<br/>` +
+            '<small>Se muestra en gris para todos los roles. No bloquea el canje.</small>',
+      input: 'textarea',
+      inputValue: ticket.informacion || '',
+      inputPlaceholder: 'Escribí la información a mostrar...',
+      icon: 'info',
+      showCancelButton: true,
+      showDenyButton: !!ticket.informacion,
+      denyButtonText: 'Quitar información',
+      confirmButtonText: ticket.informacion ? 'Actualizar' : 'Guardar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#6c757d'
+    });
+
+    if (result.isConfirmed) {
+      const texto = (result.value || '').trim();
+      if (!texto) {
+        Swal.fire('Falta información', 'Escribí el texto a mostrar', 'warning');
+        return;
+      }
+      try {
+        await ticketService.marcarInformacion(ticket['Ticket ID'], texto);
+        Swal.fire({ title: 'Información guardada', icon: 'success', timer: 1400, showConfirmButton: false });
+        await refreshTicketsData(false);
+      } catch (error) {
+        console.error('Error al guardar información:', error);
+        Swal.fire('Error', error.response?.data?.message || 'No se pudo guardar la información', 'error');
+      }
+      return;
+    }
+
+    if (result.isDenied) {
+      try {
+        await ticketService.marcarInformacion(ticket['Ticket ID'], '');
+        Swal.fire({ title: 'Información quitada', icon: 'success', timer: 1400, showConfirmButton: false });
+        await refreshTicketsData(false);
+      } catch (error) {
+        console.error('Error al quitar información:', error);
+        Swal.fire('Error', error.response?.data?.message || 'No se pudo quitar la información', 'error');
+      }
+    }
+  };
+
   const getPrintButtonText = (ticket) => {
     const userRole = user?.role || user?.rol;
 
@@ -1084,6 +1160,9 @@ const TicketsPage = () => {
     // Fraude y eliminado mandan sobre cualquier otro estado: son bloqueos
     if (ticket.fraude) return 'fraude';
     if (ticket.eliminado) return 'eliminado';
+    // Nota informativa del jefe: no bloquea el canje, pero se pinta gris
+    // para que todos la vean mientras esté colocada
+    if (ticket.informacion) return 'informacion';
     if (ticket.canjeado && (ticket.impreso || !printerEnabled)) return 'completed';
     if (ticket.canjeado) return 'pending';
     if (ticket.impreso) return 'printed';
@@ -1096,6 +1175,8 @@ const TicketsPage = () => {
       case 'fraude':
       case 'eliminado':
         return 'table-danger'; // Rojo: fraude o eliminado del evento
+      case 'informacion':
+        return 'table-secondary'; // Gris: nota informativa del jefe
       case 'pending':
         return 'table-warning'; // Amarillo: canjeado, esperando impresión
       case 'completed':
@@ -1562,8 +1643,24 @@ const TicketsPage = () => {
                                         ? `Marcado como fraude${ticket.motivoFraude ? `: ${ticket.motivoFraude}` : ''}. Click para quitar la marca.`
                                         : 'Marcar este ticket como fraude (bloquea el canje)'}
                                     >
-                                      <i className="fas fa-ban"></i> {ticket.fraude ? 'Fraude' : 'Fraude'}
+                                      <i className="fas fa-ban"></i> Fraude
                                     </button>
+                                  )}
+                                  {isJefe && (
+                                    <button
+                                      className={`btn btn-sm me-1 ${ticket.informacion ? 'btn-secondary' : 'btn-outline-secondary'}`}
+                                      onClick={() => handleSetInformacion(ticket)}
+                                      title={ticket.informacion
+                                        ? `Información: ${ticket.informacion}. Click para editar o quitar.`
+                                        : 'Colocar una nota informativa (se muestra en gris para todos, no bloquea el canje)'}
+                                    >
+                                      <i className="fas fa-circle-info"></i> Info
+                                    </button>
+                                  )}
+                                  {ticket.informacion && (
+                                    <div className="text-secondary fw-semibold" style={{ fontSize: '0.75em', marginBottom: '4px' }}>
+                                      <i className="fas fa-circle-info me-1"></i>{ticket.informacion}
+                                    </div>
                                   )}
                                   {ticket.fraude ? (
                                     <span className="text-danger fw-semibold" style={{ fontSize: '0.8em' }}>
@@ -1883,6 +1980,19 @@ const TicketsPage = () => {
                       )}
 
                       <div className="mb-3">
+                        <label className="form-label">Cédula de quien retira *</label>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          className="form-control"
+                          placeholder="Número de cédula"
+                          value={printForm.cedulaQuienRetira}
+                          maxLength={15}
+                          onChange={(e) => setPrintForm({...printForm, cedulaQuienRetira: onlyDigits(e.target.value)})}
+                        />
+                      </div>
+
+                      <div className="mb-3">
                         <label className="form-label">Celular *</label>
                         <input
                           type="tel"
@@ -2040,6 +2150,19 @@ const TicketsPage = () => {
                       )}
 
                       <div className="mb-3">
+                        <label className="form-label">Cédula de quien retira *</label>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          className="form-control"
+                          placeholder="Número de cédula"
+                          value={bulkCanjeForm.cedulaQuienRetira}
+                          maxLength={15}
+                          onChange={(e) => setBulkCanjeForm({...bulkCanjeForm, cedulaQuienRetira: onlyDigits(e.target.value)})}
+                        />
+                      </div>
+
+                      <div className="mb-3">
                         <label className="form-label">Celular *</label>
                         <input
                           type="tel"
@@ -2161,6 +2284,13 @@ const TicketsPage = () => {
                         <strong>Quién Retira:</strong>
                         <p className="text-muted">{selectedCanjeInfo.quienRetira || '-'}</p>
                       </div>
+                      <div className="col-6">
+                        <strong>Cédula de quien retira:</strong>
+                        <p className="text-muted">{selectedCanjeInfo.cedulaQuienRetira || '-'}</p>
+                      </div>
+                    </div>
+
+                    <div className="row mb-3">
                       <div className="col-6">
                         <strong>Celular:</strong>
                         <p className="text-muted">{selectedCanjeInfo.celular || '-'}</p>

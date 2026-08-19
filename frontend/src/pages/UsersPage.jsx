@@ -114,13 +114,45 @@ const UsersPage = () => {
     fetchPuntosVenta(); // Refrescar puntos de venta al editar
   };
 
-  const handleDelete = async (userId, userName) => {
+  const handleToggleActivo = async (userId, userName, activar) => {
     const result = await Swal.fire({
-      title: '¿Eliminar usuario?',
-      text: `Se eliminará a "${userName}" de forma permanente.`,
+      title: activar ? '¿Activar usuario?' : '¿Desactivar usuario?',
+      text: activar
+        ? `"${userName}" va a poder volver a iniciar sesión.`
+        : `"${userName}" no va a poder iniciar sesión ni operar. Sus datos y su historial de canjes/auditoría se conservan, y podés reactivarlo cuando quieras.`,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: activar ? 'Sí, activar' : 'Sí, desactivar',
+      cancelButtonText: 'Cancelar',
+      reverseButtons: true
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+      await api.put(`/users/${userId}`, { activo: activar });
+      fetchUsers();
+      Swal.fire({
+        title: activar ? 'Usuario activado' : 'Usuario desactivado',
+        icon: 'success',
+        timer: 1500,
+        showConfirmButton: false
+      });
+    } catch (error) {
+      console.error('Error al cambiar estado del usuario:', error);
+      Swal.fire('Error', error.response?.data?.message || 'No se pudo actualizar el usuario', 'error');
+    }
+  };
+
+  const handleHardDelete = async (userId, userName) => {
+    const result = await Swal.fire({
+      title: '¿Eliminar usuario permanentemente?',
+      html: `Se va a borrar a <strong>"${userName}"</strong> de la base de datos, sin poder recuperarlo.<br/><br/>` +
+        '<span class="text-danger">Los tickets y registros de auditoría donde participó ya no van a poder mostrar su nombre.</span><br/>' +
+        'Si preferís conservar el historial, usá "Desactivar" en vez de esto.',
       icon: 'warning',
       showCancelButton: true,
-      confirmButtonText: 'Sí, eliminar',
+      confirmButtonText: 'Sí, eliminar permanentemente',
       cancelButtonText: 'Cancelar',
       confirmButtonColor: '#dc3545',
       reverseButtons: true
@@ -129,18 +161,18 @@ const UsersPage = () => {
     if (!result.isConfirmed) return;
 
     try {
-      await api.delete(`/users/${userId}`);
+      await api.delete(`/users/${userId}/permanent`);
       fetchUsers();
       Swal.fire({
-        title: 'Eliminado',
-        text: `El usuario "${userName}" fue eliminado.`,
+        title: 'Eliminado permanentemente',
+        text: `"${userName}" fue borrado de la base de datos.`,
         icon: 'success',
         timer: 1800,
         showConfirmButton: false
       });
     } catch (error) {
-      console.error('Error deleting user:', error);
-      Swal.fire('Error', error.response?.data?.message || 'Error al eliminar usuario', 'error');
+      console.error('Error al eliminar usuario permanentemente:', error);
+      Swal.fire('Error', error.response?.data?.message || 'No se pudo eliminar el usuario', 'error');
     }
   };
 
@@ -234,13 +266,22 @@ const UsersPage = () => {
                                 <i className="bi bi-pencil-square"></i>
                               </button>
                               {userItem._id !== user._id && (
-                                <button
-                                  className="btn btn-sm btn-icon btn-icon-delete"
-                                  onClick={() => handleDelete(userItem._id, userItem.nombre)}
-                                  title="Eliminar"
-                                >
-                                  <i className="bi bi-trash3"></i>
-                                </button>
+                                <>
+                                  <button
+                                    className="btn btn-sm btn-icon"
+                                    onClick={() => handleToggleActivo(userItem._id, userItem.nombre, !userItem.activo)}
+                                    title={userItem.activo ? 'Desactivar' : 'Activar'}
+                                  >
+                                    <i className={`bi ${userItem.activo ? 'bi-slash-circle' : 'bi-check-circle'}`}></i>
+                                  </button>
+                                  <button
+                                    className="btn btn-sm btn-icon btn-icon-delete"
+                                    onClick={() => handleHardDelete(userItem._id, userItem.nombre)}
+                                    title="Eliminar permanentemente"
+                                  >
+                                    <i className="bi bi-trash3"></i>
+                                  </button>
+                                </>
                               )}
                             </div>
                           </td>
@@ -341,7 +382,7 @@ const UsersPage = () => {
                             <option value="">
                               {loadingPuntos ? 'Cargando puntos de venta...' : 'Seleccione un punto de venta'}
                             </option>
-                            {puntosVenta.map(punto => (
+                            {puntosVenta.filter(punto => punto.activo !== false).map(punto => (
                               <option key={punto._id} value={punto.nombre}>
                                 {punto.nombre} ({punto.localidades.join(', ')})
                               </option>

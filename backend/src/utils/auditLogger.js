@@ -21,6 +21,8 @@ const createAuditLog = async (userId, action, resourceType, resourceId, details,
       tipo = 'cambio_password'; // Reutilizamos este tipo para updates
     } else if (action === 'DELETE' && resourceType === 'PuntoVenta') {
       tipo = 'logout'; // Reutilizamos este tipo para deletes
+    } else if (action === 'DELETE_PERMANENT') {
+      tipo = 'eliminacion_permanente';
     } else if (action === 'PRINT') {
       tipo = 'impresion';
     } else if (action === 'REPRINT') {

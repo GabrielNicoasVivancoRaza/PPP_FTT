@@ -12,6 +12,7 @@ const {
   getTicketsByTransaction,
   getTicketByBarcode,
   marcarFraude,
+  marcarInformacion,
   getTicketStats,
   canjeTicket,
   bulkCanjeTickets
@@ -80,6 +81,9 @@ router.post('/manual', auth, authorize('jefe', 'importador'), crearTicketManual)
 
 // @route   POST /api/tickets/:id/fraude (solo jefe)
 router.post('/:id/fraude', auth, authorize('jefe'), marcarFraude);
+
+// @route   POST /api/tickets/:id/informacion (solo jefe)
+router.post('/:id/informacion', auth, authorize('jefe'), marcarInformacion);
 
 // @route   POST /api/tickets/import-csv
 // Sube el CSV del evento tal cual; el backend filtra columnas y agrega

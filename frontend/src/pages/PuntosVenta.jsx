@@ -101,13 +101,49 @@ const PuntosVenta = () => {
     setShowModal(true);
   };
 
-  const handleDelete = async (id, nombre) => {
+  const handleToggleActivo = async (id, nombre, activar) => {
     const result = await Swal.fire({
-      title: '¿Eliminar punto de venta?',
-      text: `Se eliminará "${nombre}" de forma permanente.`,
+      title: activar ? '¿Activar punto de venta?' : '¿Desactivar punto de venta?',
+      text: activar
+        ? `"${nombre}" va a volver a estar disponible para asignar staff y operar.`
+        : `"${nombre}" deja de estar disponible para asignar staff u operar, pero se conserva junto con su historial. Podés reactivarlo cuando quieras.`,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: activar ? 'Sí, activar' : 'Sí, desactivar',
+      cancelButtonText: 'Cancelar',
+      reverseButtons: true
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+      const response = await api.put(`/puntos-venta/${id}`, { activo: activar });
+      if (response.data.success) {
+        fetchPuntosVenta();
+        setError('');
+        Swal.fire({
+          title: activar ? 'Activado' : 'Desactivado',
+          icon: 'success',
+          timer: 1500,
+          showConfirmButton: false
+        });
+      } else {
+        setError(response.data.message || 'Error al actualizar punto de venta');
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      setError('Error de conexión');
+    }
+  };
+
+  const handleHardDelete = async (id, nombre) => {
+    const result = await Swal.fire({
+      title: '¿Eliminar punto de venta permanentemente?',
+      html: `Se va a borrar <strong>"${nombre}"</strong> de la base de datos, sin poder recuperarlo.<br/><br/>` +
+        'Si preferís conservar el historial (staff asignado, tickets impresos desde ahí), usá "Desactivar" en vez de esto.',
       icon: 'warning',
       showCancelButton: true,
-      confirmButtonText: 'Sí, eliminar',
+      confirmButtonText: 'Sí, eliminar permanentemente',
       cancelButtonText: 'Cancelar',
       confirmButtonColor: '#dc3545',
       reverseButtons: true
@@ -118,14 +154,14 @@ const PuntosVenta = () => {
     }
 
     try {
-      const response = await api.delete(`/puntos-venta/${id}`);
+      const response = await api.delete(`/puntos-venta/${id}/permanent`);
 
       if (response.data.success) {
         fetchPuntosVenta();
         setError('');
         Swal.fire({
-          title: 'Eliminado',
-          text: `El punto de venta "${nombre}" fue eliminado.`,
+          title: 'Eliminado permanentemente',
+          text: `"${nombre}" fue borrado de la base de datos.`,
           icon: 'success',
           timer: 1800,
           showConfirmButton: false
@@ -220,11 +256,14 @@ const PuntosVenta = () => {
           ) : (
             puntosVenta.map(punto => (
               <div key={punto._id} className="col-md-6 col-lg-4 mb-3">
-                <div className="card h-100 punto-venta-card">
+                <div className={`card h-100 punto-venta-card${punto.activo === false ? ' opacity-75' : ''}`}>
                   <div className="card-header d-flex justify-content-between align-items-center">
                     <h5 className="card-title mb-0">
                       <i className="bi bi-shop me-2 text-celeste"></i>
                       {punto.nombre}
+                      {punto.activo === false && (
+                        <span className="badge bg-secondary ms-2">Inactivo</span>
+                      )}
                     </h5>
                     <div className="d-flex gap-2">
                       <button
@@ -235,9 +274,16 @@ const PuntosVenta = () => {
                         <i className="bi bi-pencil-square"></i>
                       </button>
                       <button
+                        className="btn btn-sm btn-icon"
+                        onClick={() => handleToggleActivo(punto._id, punto.nombre, punto.activo === false)}
+                        title={punto.activo === false ? 'Activar' : 'Desactivar'}
+                      >
+                        <i className={`bi ${punto.activo === false ? 'bi-check-circle' : 'bi-slash-circle'}`}></i>
+                      </button>
+                      <button
                         className="btn btn-sm btn-icon btn-icon-delete"
-                        onClick={() => handleDelete(punto._id, punto.nombre)}
-                        title="Eliminar punto de venta"
+                        onClick={() => handleHardDelete(punto._id, punto.nombre)}
+                        title="Eliminar permanentemente"
                       >
                         <i className="bi bi-trash3"></i>
                       </button>
