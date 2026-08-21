@@ -1,6 +1,7 @@
 const PuntoVenta = require('../models/PuntoVenta');
 const Ticket = require('../models/Ticket');
 const { createAuditLog } = require('../utils/auditLogger');
+const { buildGeneralSearchFilter } = require('../utils/searchHelpers');
 
 // Obtener todos los puntos de venta
 const getPuntosVenta = async (req, res) => {
@@ -244,41 +245,10 @@ const getTicketsByPuntoVenta = async (req, res) => {
     // Construir filtros de búsqueda
     const searchFilters = [];
 
-    // Agregar filtro de búsqueda general si se proporciona
+    // Búsqueda general (nombre, email, cédula, Ticket ID, Transaction ID) —
+    // insensible a tildes y con coincidencia parcial
     if (search && search.trim()) {
-      const searchTerm = search.trim();
-      
-      // Usar búsqueda de texto de MongoDB si es posible, sino usar regex
-      try {
-        // Intentar búsqueda de texto primero (más rápida)
-        const textSearchQuery = {
-          $and: [
-            { $or: localidadFilters },
-            { $text: { $search: searchTerm } }
-          ]
-        };
-        
-        const testCount = await TicketModel.countDocuments(textSearchQuery);
-        if (testCount > 0) {
-          query = textSearchQuery;
-        } else {
-          throw new Error('No text search results, fallback to regex');
-        }
-      } catch (error) {
-        // Fallback a búsqueda regex
-        const searchRegex = { $regex: searchTerm, $options: 'i' };
-        
-        searchFilters.push({
-          $or: [
-            { 'First Name': searchRegex },
-            { 'Last Name': searchRegex },
-            { 'Email': searchRegex },
-            { 'Ticket ID': searchTerm },
-            { 'Transaction ID': searchTerm },
-            { 'Numero de Cedula:': searchRegex }
-          ]
-        });
-      }
+      searchFilters.push(buildGeneralSearchFilter(search));
     }
 
     // Agregar filtro específico de asiento si se proporciona
@@ -296,35 +266,12 @@ const getTicketsByPuntoVenta = async (req, res) => {
 
     // Combinar filtros
     if (searchFilters.length > 0) {
-      if (query.$text) {
-        // Si ya tenemos búsqueda de texto, agregar filtros adicionales
-        if (seatSearch && seatSearch.trim()) {
-          const seatSearchTerm = seatSearch.trim();
-          const seatRegex = { $regex: seatSearchTerm, $options: 'i' };
-          query = {
-            $and: [
-              query,
-              { 'Seat': seatRegex }
-            ]
-          };
-        }
-        if (ticketIdSearch && ticketIdSearch.trim()) {
-          query = {
-            $and: [
-              query,
-              { 'Ticket ID': ticketIdSearch.trim() }
-            ]
-          };
-        }
-      } else {
-        // Usar filtros regex
-        query = {
-          $and: [
-            { $or: localidadFilters },
-            ...searchFilters
-          ]
-        };
-      }
+      query = {
+        $and: [
+          { $or: localidadFilters },
+          ...searchFilters
+        ]
+      };
     }
 
     const skip = (page - 1) * limit;
@@ -483,21 +430,10 @@ const getTicketsForStaff = async (req, res) => {
     // Construir filtros de búsqueda
     const searchFilters = [];
 
-    // Agregar filtro de búsqueda general si se proporciona
+    // Búsqueda general (nombre, email, cédula, Ticket ID, Transaction ID) —
+    // insensible a tildes y con coincidencia parcial
     if (search && search.trim()) {
-      const searchTerm = search.trim();
-      const searchRegex = { $regex: searchTerm, $options: 'i' };
-      
-      searchFilters.push({
-        $or: [
-          { 'First Name': searchRegex },
-          { 'Last Name': searchRegex },
-          { 'Email': searchRegex },
-          { 'Ticket ID': searchTerm },
-          { 'Transaction ID': searchTerm },
-          { 'Numero de Cedula:': searchRegex }
-        ]
-      });
+      searchFilters.push(buildGeneralSearchFilter(search));
     }
 
     // Agregar filtro específico de asiento si se proporciona

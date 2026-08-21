@@ -6,6 +6,7 @@ const { getUnprintedTransactionTicketIds, markTransactionPrinted, emitTicketUpda
 const { propagateCanjeToTransaction } = require('../utils/canjeHelpers');
 const { isValidPhone, isValidName, isValidCedula } = require('../utils/validators');
 const { construirFilasTickets, filasACsv } = require('../utils/exportHelpers');
+const { buildGeneralSearchFilter } = require('../utils/searchHelpers');
 
 // Resuelve el color configurado para un tipo de ticket (campo "Ticket")
 const resolveColor = (ticketColors, tipo) => {
@@ -39,21 +40,10 @@ const getTickets = async (req, res) => {
       filters.push({ 'Ticket ID': ticketIdSearch.trim() });
     }
     
-    // Filtro de búsqueda general
+    // Filtro de búsqueda general (nombre, email, cédula, Ticket ID,
+    // Transaction ID) — insensible a tildes y con coincidencia parcial
     if (search && search.trim()) {
-      const trimmedSearch = search.trim();
-      const searchRegex = new RegExp(trimmedSearch, 'i');
-      
-      filters.push({
-        $or: [
-          { 'First Name': searchRegex },
-          { 'Last Name': searchRegex },
-          { 'Email': searchRegex },
-          { 'Ticket ID': trimmedSearch },
-          { 'Transaction ID': trimmedSearch },
-          { 'Numero de Cedula:': searchRegex }
-        ]
-      });
+      filters.push(buildGeneralSearchFilter(search));
     }
     
     // Filtro por asiento
