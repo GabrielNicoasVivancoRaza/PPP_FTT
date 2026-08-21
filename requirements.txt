@@ -1,0 +1,5 @@
+# Dependencias del script de respaldo (respaldo_canjeados.py).
+# Instalar con: pip install -r requirements.txt
+pymongo>=4.6
+python-dotenv>=1.0
+openpyxl>=3.1

@@ -89,6 +89,29 @@ export const ticketService = {
     return response.data;
   },
 
+  // Informe diario: total canjeado y desglose por localidad (del día y acumulado)
+  getReporteDiario: async (fecha) => {
+    const response = await api.get('/tickets/reporte-diario', { params: { fecha } });
+    return response.data;
+  },
+
+  // Descargar CSV con la información de TODOS los tickets, canjeados o no
+  // (solo jefe). Devuelve el Blob crudo, el componente arma la descarga.
+  exportTicketsCsv: async () => {
+    const response = await api.get('/tickets/export', {
+      responseType: 'blob',
+      timeout: 60000
+    });
+    return response.data;
+  },
+
+  // Colocar / quitar la nota informativa en varios tickets a la vez (solo
+  // jefe). Enviar informacion vacío quita la nota de todos los seleccionados.
+  bulkMarcarInformacion: async (ticketIds, informacion = '') => {
+    const response = await api.post('/tickets/bulk-informacion', { ticketIds, informacion });
+    return response.data;
+  },
+
   // Marcar / desmarcar un ticket como fraude (solo jefe)
   marcarFraude: async (ticketId, fraude, motivo = '') => {
     const response = await api.post(`/tickets/${ticketId}/fraude`, { fraude, motivo });

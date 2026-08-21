@@ -56,3 +56,11 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+
+# Respaldos y exports de tickets (contienen datos personales: cédulas,
+# celulares, emails) — nunca deben subirse al repositorio
+respaldo_tickets_*.xlsx
+tickets_*.csv
+*.xlsx
+
+*.csv

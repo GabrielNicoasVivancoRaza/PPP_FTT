@@ -5,6 +5,7 @@ const { createOrExtendPrintRequest } = require('./printRequestController');
 const { getUnprintedTransactionTicketIds, markTransactionPrinted, emitTicketUpdates } = require('../utils/printHelpers');
 const { propagateCanjeToTransaction } = require('../utils/canjeHelpers');
 const { isValidPhone, isValidName, isValidCedula } = require('../utils/validators');
+const { construirFilasTickets, filasACsv } = require('../utils/exportHelpers');
 
 // Resuelve el color configurado para un tipo de ticket (campo "Ticket")
 const resolveColor = (ticketColors, tipo) => {
@@ -607,6 +608,132 @@ const getTicketStats = async (req, res) => {
   }
 };
 
+const redondear = (n) => Math.round(n * 100) / 100;
+const porcentaje = (parte, total) => (total > 0 ? redondear((parte / total) * 100) : 0);
+
+// Arma el desglose por localidad (campo "Ticket") a partir de dos mapas de
+// conteo: uno con la capacidad total por localidad (sin eliminados) y otro
+// con los canjeados (del día o acumulados, según se use). Se incluyen todas
+// las localidades con capacidad aunque tengan 0 canjeados ese recorte.
+const armarPorLocalidad = (totalesPorLocalidad, canjeadosPorLocalidad, totalCanjeadoGlobal) => {
+  return Object.entries(totalesPorLocalidad)
+    .map(([localidad, totalLocalidad]) => {
+      const canjeados = canjeadosPorLocalidad[localidad] || 0;
+      return {
+        localidad,
+        canjeados,
+        totalLocalidad,
+        porcentajeDelTotalCanjeado: porcentaje(canjeados, totalCanjeadoGlobal),
+        porcentajeDeLocalidad: porcentaje(canjeados, totalLocalidad)
+      };
+    })
+    .sort((a, b) => a.localidad.localeCompare(b.localidad, 'es'));
+};
+
+// @desc    Informe diario: total canjeado y desglose por localidad, tanto
+// del día seleccionado como acumulado desde el inicio del evento.
+// @route   GET /api/tickets/reporte-diario?fecha=YYYY-MM-DD
+// @access  Private (solo jefe)
+const getReporteDiario = async (req, res) => {
+  try {
+    const fecha = (req.query.fecha || new Date().toISOString().slice(0, 10)).trim();
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+      return res.status(400).json({
+        success: false,
+        message: 'La fecha debe tener el formato YYYY-MM-DD'
+      });
+    }
+
+    const desde = new Date(`${fecha}T00:00:00.000Z`);
+    const hasta = new Date(`${fecha}T23:59:59.999Z`);
+
+    const TicketModel = req.TicketModel || Ticket;
+
+    const [capacidadAgg, canjeadosDiaAgg, canjeadosTotalAgg] = await Promise.all([
+      // Capacidad total por localidad: se excluyen los eliminados (ya no son
+      // parte real del evento), pero sí se cuentan los marcados como fraude
+      // (siguen existiendo, solo no se pueden canjear)
+      TicketModel.aggregate([
+        { $match: { eliminado: { $ne: true } } },
+        { $group: { _id: '$Ticket', total: { $sum: 1 } } }
+      ]),
+      TicketModel.aggregate([
+        { $match: { canjeado: true, fechaCanje: { $gte: desde, $lte: hasta } } },
+        { $group: { _id: '$Ticket', total: { $sum: 1 } } }
+      ]),
+      TicketModel.aggregate([
+        { $match: { canjeado: true } },
+        { $group: { _id: '$Ticket', total: { $sum: 1 } } }
+      ])
+    ]);
+
+    const aMapa = (agg) => Object.fromEntries(agg.map(r => [r._id || 'Sin localidad', r.total]));
+
+    const totalesPorLocalidad = aMapa(capacidadAgg);
+    const canjeadosDiaPorLocalidad = aMapa(canjeadosDiaAgg);
+    const canjeadosTotalPorLocalidad = aMapa(canjeadosTotalAgg);
+
+    const totalCanjeadosDia = Object.values(canjeadosDiaPorLocalidad).reduce((a, b) => a + b, 0);
+    const totalCanjeadosTotal = Object.values(canjeadosTotalPorLocalidad).reduce((a, b) => a + b, 0);
+
+    res.json({
+      success: true,
+      data: {
+        fecha,
+        dia: {
+          totalCanjeados: totalCanjeadosDia,
+          porLocalidad: armarPorLocalidad(totalesPorLocalidad, canjeadosDiaPorLocalidad, totalCanjeadosDia)
+        },
+        total: {
+          totalCanjeados: totalCanjeadosTotal,
+          porLocalidad: armarPorLocalidad(totalesPorLocalidad, canjeadosTotalPorLocalidad, totalCanjeadosTotal)
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Error al generar el informe diario:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+};
+
+// @desc    Descargar en CSV la información de TODOS los tickets (canjeados
+// o no). Respaldo rápido desde el navegador; el respaldo completo en Excel
+// con colores por día de canje se genera con respaldo_tickets.py
+// @route   GET /api/tickets/export
+// @access  Private (solo jefe)
+const exportTicketsCsv = async (req, res) => {
+  try {
+    const TicketModel = req.TicketModel || Ticket;
+
+    const tickets = await TicketModel.find({})
+      .populate('usuarioCanje', 'nombre')
+      .populate('usuarioResponsable', 'nombre')
+      .sort({ fechaCanje: 1 })
+      .lean();
+
+    const csv = filasACsv(construirFilasTickets(tickets));
+    const fechaArchivo = new Date().toISOString().slice(0, 10);
+
+    res.set({
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="tickets_${fechaArchivo}.csv"`
+    });
+    res.send(csv);
+
+  } catch (error) {
+    console.error('Error al exportar tickets a CSV:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+};
+
 // @desc    Realizar canje de ticket
 // @route   POST /api/tickets/:id/canje
 // @access  Private
@@ -1137,6 +1264,79 @@ const bulkCanjeTickets = async (req, res) => {
   }
 };
 
+// @desc    Colocar / quitar la nota informativa en varios tickets a la vez
+// (mismo checkbox de selección múltiple que el canje masivo, pero acá no
+// importa si ya están canjeados o no: la información es independiente)
+// @route   POST /api/tickets/bulk-informacion
+// @access  Private (solo jefe)
+const bulkMarcarInformacion = async (req, res) => {
+  try {
+    const { ticketIds, informacion } = req.body;
+    const texto = (informacion || '').trim();
+
+    if (!Array.isArray(ticketIds) || ticketIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Debe proporcionar un array de ticket IDs'
+      });
+    }
+
+    const TicketModel = req.TicketModel || Ticket;
+    const filtro = { 'Ticket ID': { $in: ticketIds } };
+
+    const tickets = await TicketModel.find(filtro);
+    if (tickets.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No se encontraron los tickets especificados'
+      });
+    }
+
+    const updateOp = texto
+      ? { $set: { informacion: texto, fechaInformacion: new Date(), colocadoInformacionPor: req.user._id } }
+      : { $unset: { informacion: '', fechaInformacion: '', colocadoInformacionPor: '' } };
+
+    await TicketModel.updateMany(filtro, updateOp);
+
+    const actualizados = await TicketModel.find(filtro);
+
+    const io = req.app.get('io');
+    emitTicketUpdates(io, actualizados, texto ? 'informacion' : 'informacion-quitada');
+
+    try {
+      await AuditLog.create({
+        tipo: 'informacion',
+        usuario: req.user._id,
+        puntoTrabajo: req.user.puntoTrabajo,
+        detalles: {
+          accion: texto ? 'colocar_informacion_masivo' : 'quitar_informacion_masivo',
+          informacion: texto,
+          cantidad: actualizados.length,
+          ticketIds: actualizados.map(t => t['Ticket ID'])
+        },
+        ip: req.ip || 'Unknown'
+      });
+    } catch (auditError) {
+      console.error('Error al crear log de auditoría:', auditError);
+    }
+
+    res.json({
+      success: true,
+      message: texto
+        ? `Información colocada en ${actualizados.length} ticket(s)`
+        : `Información quitada de ${actualizados.length} ticket(s)`,
+      data: { actualizados: actualizados.length }
+    });
+
+  } catch (error) {
+    console.error('Error al colocar información masiva:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+};
+
 module.exports = {
   getTickets,
   printTicket,
@@ -1146,6 +1346,9 @@ module.exports = {
   marcarFraude,
   marcarInformacion,
   getTicketStats,
+  getReporteDiario,
+  exportTicketsCsv,
   canjeTicket,
-  bulkCanjeTickets
+  bulkCanjeTickets,
+  bulkMarcarInformacion
 };

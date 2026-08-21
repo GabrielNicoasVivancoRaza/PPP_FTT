@@ -95,6 +95,14 @@ const Navigation = () => {
                 </li>
                 <li className="nav-item">
                   <button
+                    className={navLinkClass('/informe-diario')}
+                    onClick={() => navigate('/informe-diario')}
+                  >
+                    <i className="fas fa-chart-pie me-2"></i>Informe Diario
+                  </button>
+                </li>
+                <li className="nav-item">
+                  <button
                     className={navLinkClass('/impresion-config')}
                     onClick={() => navigate('/impresion-config')}
                   >

@@ -883,15 +883,14 @@ const TicketsPage = () => {
   };
 
   const handleSelectAll = () => {
-    if (selectedTickets.size === tickets.filter(t => !t.canjeado).length) {
+    if (selectedTickets.size === tickets.length) {
       // Si todos están seleccionados, deseleccionar todos
       setSelectedTickets(new Set());
     } else {
-      // Seleccionar todos los tickets no canjeados
-      const allTicketIds = tickets
-        .filter(t => !t.canjeado)
-        .map(t => t['Ticket ID']);
-      setSelectedTickets(new Set(allTicketIds));
+      // Seleccionar todos los tickets de la página actual (canjeados o no:
+      // el canje masivo ya filtra los ya canjeados por su cuenta, y colocar
+      // información no depende del estado de canje)
+      setSelectedTickets(new Set(tickets.map(t => t['Ticket ID'])));
     }
   };
 
@@ -901,6 +900,47 @@ const TicketsPage = () => {
       return;
     }
     setShowBulkCanjeModal(true);
+  };
+
+  // Colocar / quitar la nota informativa en todos los tickets seleccionados
+  // a la vez (solo jefe). A diferencia del canje masivo, acá no importa si
+  // ya están canjeados o no.
+  const handleBulkInformacion = async () => {
+    if (selectedTickets.size === 0) {
+      Swal.fire('Falta información', 'Debe seleccionar al menos un ticket', 'warning');
+      return;
+    }
+
+    const cantidad = selectedTickets.size;
+    const result = await Swal.fire({
+      title: `Colocar información en ${cantidad} ticket(s)`,
+      html: '<small>Se muestra en gris para todos los roles. No bloquea el canje.</small>',
+      input: 'textarea',
+      inputPlaceholder: 'Escribí la información a mostrar...',
+      icon: 'info',
+      showCancelButton: true,
+      confirmButtonText: 'Guardar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#6c757d'
+    });
+
+    if (!result.isConfirmed) return;
+
+    const texto = (result.value || '').trim();
+    if (!texto) {
+      Swal.fire('Falta información', 'Escribí el texto a mostrar', 'warning');
+      return;
+    }
+
+    try {
+      await ticketService.bulkMarcarInformacion(Array.from(selectedTickets), texto);
+      Swal.fire({ title: 'Información guardada', icon: 'success', timer: 1500, showConfirmButton: false });
+      setSelectedTickets(new Set());
+      await refreshTicketsData(true);
+    } catch (error) {
+      console.error('Error al colocar información masiva:', error);
+      Swal.fire('Error', error.response?.data?.message || 'No se pudo guardar la información', 'error');
+    }
   };
 
   const handleBulkCanjeSubmit = async (e) => {
@@ -1286,6 +1326,18 @@ const TicketsPage = () => {
                   Canjear Seleccionados ({selectedTickets.size})
                 </button>
               )}
+
+              {/* Colocar información en varios a la vez (solo jefe) */}
+              {isJefe && selectedTickets.size > 0 && (
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={handleBulkInformacion}
+                  style={{fontSize: '0.8em'}}
+                >
+                  <i className="fas fa-circle-info me-1"></i>
+                  Colocar Información ({selectedTickets.size})
+                </button>
+              )}
             </div>
           </div>
 
@@ -1555,7 +1607,7 @@ const TicketsPage = () => {
                                 type="checkbox"
                                 className="form-check-input"
                                 onChange={handleSelectAll}
-                                checked={selectedTickets.size > 0 && selectedTickets.size === tickets.filter(t => !t.canjeado).length}
+                                checked={selectedTickets.size > 0 && selectedTickets.size === tickets.length}
                                 title="Seleccionar todos"
                               />
                             </th>
@@ -1601,7 +1653,6 @@ const TicketsPage = () => {
                                     className="form-check-input"
                                     checked={selectedTickets.has(ticket['Ticket ID'])}
                                     onChange={() => handleSelectTicket(ticket['Ticket ID'])}
-                                    disabled={ticket.canjeado}
                                   />
                                 </td>
                                 <td>

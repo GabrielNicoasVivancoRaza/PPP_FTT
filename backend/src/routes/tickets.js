@@ -14,8 +14,11 @@ const {
   marcarFraude,
   marcarInformacion,
   getTicketStats,
+  getReporteDiario,
+  exportTicketsCsv,
   canjeTicket,
-  bulkCanjeTickets
+  bulkCanjeTickets,
+  bulkMarcarInformacion
 } = require('../controllers/ticketController');
 const { importCsv, getTicketsEliminados, crearTicketManual } = require('../controllers/importController');
 
@@ -63,6 +66,12 @@ router.get('/', auth, getTickets);
 // @route   GET /api/tickets/stats
 router.get('/stats', auth, authorize('jefe'), getTicketStats);
 
+// @route   GET /api/tickets/reporte-diario?fecha=YYYY-MM-DD
+router.get('/reporte-diario', auth, authorize('jefe'), getReporteDiario);
+
+// @route   GET /api/tickets/export (descarga CSV con todos los tickets)
+router.get('/export', auth, authorize('jefe'), exportTicketsCsv);
+
 // @route   GET /api/tickets/transaction/:transactionId
 // Habilitado para staff, impresor_solo e impresor_cola: necesitan saber
 // cuántos tickets tiene asociados una transacción antes de canjear/imprimir
@@ -95,6 +104,9 @@ router.post('/import-csv', auth, authorize('jefe', 'importador'), uploadCsv.sing
 // Nota: bulkCanjeTickets ya registra su propio log de auditoría (con ticketId/detalles/ip completos),
 // por lo que NO se usa auditLogger aquí para evitar duplicar el registro en Auditoría.
 router.post('/bulk-canje', auth, authorize('jefe', 'staff', 'impresor_solo'), bulkCanjeTickets);
+
+// @route   POST /api/tickets/bulk-informacion (solo jefe)
+router.post('/bulk-informacion', auth, authorize('jefe'), bulkMarcarInformacion);
 
 // @route   POST /api/tickets/:id/print
 router.post('/:id/print', auth, authorize('jefe', 'staff', 'impresor_solo'), auditLogger('impresion'), printTicket);

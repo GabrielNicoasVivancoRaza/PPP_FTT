@@ -21,6 +21,7 @@ import ImpresosPage from './pages/ImpresosPage';
 import ImportCsvPage from './pages/ImportCsvPage';
 import TicketsEliminadosPage from './pages/TicketsEliminadosPage';
 import AgregarTicketPage from './pages/AgregarTicketPage';
+import InformeDiarioPage from './pages/InformeDiarioPage';
 
 // Bootstrap CSS
 import 'bootstrap/dist/css/bootstrap.min.css';
@@ -152,6 +153,15 @@ function App() {
                 element={
                   <ProtectedRoute roles={['jefe', 'importador']}>
                     <TicketsEliminadosPage />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/informe-diario"
+                element={
+                  <ProtectedRoute roles={['jefe']}>
+                    <InformeDiarioPage />
                   </ProtectedRoute>
                 }
               />
