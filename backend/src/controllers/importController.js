@@ -3,27 +3,37 @@ const AuditLog = require('../models/AuditLog');
 const { parseCsvBuffer, mapRowToTicket } = require('../utils/csvImportHelpers');
 const { emitTicketUpdates } = require('../utils/printHelpers');
 const { CAMPOS_CEDULA } = require('../utils/searchHelpers');
+const { isValidCedula } = require('../utils/validators');
 
 // SquadUp exporta la cédula UNA sola vez por Transaction ID (en la primera
 // fila de esa compra), dejando el resto de las filas de la misma transacción
 // sin cédula. Se arma un mapa Transaction ID -> cédula con la primera que se
 // encuentre entre TODAS las filas del archivo, para completar las que vengan
 // vacías (tanto en tickets nuevos como en los que ya existían en la base).
+//
+// Solo se acepta como fuente un valor que realmente tenga forma de cédula
+// (puros números). Esto es a propósito: si el detector de columna llega a
+// enganchar la columna equivocada (por ejemplo una pregunta de "¿Entiende
+// que debe presentar su cédula?" con respuesta "Entiendo"), ese valor NUNCA
+// se propaga ni se guarda como si fuera la cédula real.
 const armarCedulaPorTransaccion = (docs) => {
   const mapa = new Map();
   for (const doc of docs) {
     const transId = doc['Transaction ID'];
     const cedula = doc['Numero de Cedula:'];
-    if (transId && cedula && !mapa.has(transId)) {
-      mapa.set(transId, cedula);
+    if (transId && isValidCedula(cedula) && !mapa.has(transId)) {
+      mapa.set(transId, cedula.trim());
     }
   }
   return mapa;
 };
 
-// true si el documento ya tiene una cédula cargada en CUALQUIER variante de
-// nombre de columna (con/sin tilde) — no hace falta tocarlo
-const tieneCedulaCargada = (doc) => CAMPOS_CEDULA.some(campo => String(doc[campo] || '').trim());
+// true si el documento ya tiene una cédula VÁLIDA (solo números) cargada en
+// alguna variante de nombre de columna — no hace falta tocarlo. Un valor
+// como "Entiendo" (dato corrupto de una importación anterior con el bug de
+// detección de columna) NO cuenta como cédula cargada, así que sigue
+// siendo candidato a corregirse.
+const tieneCedulaValidaCargada = (doc) => CAMPOS_CEDULA.some(campo => isValidCedula(doc[campo]));
 
 // @desc    Importar un CSV del evento: agrega SOLO los tickets que todavía
 // no existen (por "Ticket ID"), sin tocar los que ya están (no se pisa
@@ -87,7 +97,7 @@ const importCsv = async (req, res) => {
     const cedulaPorTransaccion = armarCedulaPorTransaccion(candidatos);
     let cedulasCompletadasNuevos = 0;
     for (const doc of candidatos) {
-      if (!doc['Numero de Cedula:']) {
+      if (!isValidCedula(doc['Numero de Cedula:'])) {
         const cedula = cedulaPorTransaccion.get(doc['Transaction ID']);
         if (cedula) {
           doc['Numero de Cedula:'] = cedula;
@@ -233,11 +243,13 @@ const importCsv = async (req, res) => {
 
     const yaExistian = existentesSet.size + duplicadosAlInsertar;
 
-    // --- Completar cédula faltante en tickets que YA existían ---
-    // No se toca canjeado/impreso/quién retiró: solo se rellena la cédula
-    // si ninguna de las variantes de columna la tenía cargada.
+    // --- Completar/corregir cédula en tickets que YA existían ---
+    // No se toca canjeado/impreso/quién retiró: solo se corrige la cédula
+    // si ninguna variante de columna tiene un valor con forma de cédula
+    // válida (esto también corrige datos corruptos de importaciones viejas
+    // con el bug del detector de columna, ej. "Entiendo" en vez del número).
     let ticketsConCedulaCompletada = [];
-    const sinCedula = existentes.filter(t => !tieneCedulaCargada(t));
+    const sinCedula = existentes.filter(t => !tieneCedulaValidaCargada(t));
     const bulkOpsCedula = sinCedula
       .map(t => ({ ticketId: t['Ticket ID'], cedula: cedulaPorTransaccion.get(t['Transaction ID']) }))
       .filter(op => op.cedula)

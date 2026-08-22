@@ -1,5 +1,6 @@
 const csv = require('csv-parser');
 const { Readable } = require('stream');
+const { CEDULA_REGEX } = require('./validators');
 
 // Columnas del CSV que sí nos interesan, mapeadas 1:1 al nombre que ya usa
 // el resto de la app en Mongo. Todo lo demás (precios, direcciones,
@@ -30,8 +31,36 @@ const quitarBOM = (buffer) => {
   return buffer;
 };
 
+// Algunos CSV "crudos" (descargados directo, sin pasar por el script de
+// limpieza) llegan con mojibake: texto que ya estaba en UTF-8 se volvió a
+// interpretar como Latin-1/Windows-1252 y se re-guardó así, dejando "é"
+// como "Ã©", "ñ" como "Ã±", etc. Esto rompe la detección de la columna de
+// cédula por nombre (y también corrompe nombres con tilde en los datos).
+// La "Ã" (U+00C3) casi no aparece nunca en texto en español bien
+// codificado, así que su sola presencia alcanza como señal para reparar.
+const repararMojibake = (texto) => {
+  if (typeof texto !== 'string' || !texto.includes('Ã')) return texto;
+  try {
+    const reparado = Buffer.from(texto, 'latin1').toString('utf8');
+    // Si la "reparación" generó caracteres de reemplazo, el texto no era
+    // este tipo de mojibake — mejor no tocarlo
+    return reparado.includes('�') ? texto : reparado;
+  } catch {
+    return texto;
+  }
+};
+
+const repararFilaMojibake = (fila) => {
+  const reparada = {};
+  for (const [clave, valor] of Object.entries(fila)) {
+    reparada[repararMojibake(clave)] = typeof valor === 'string' ? repararMojibake(valor) : valor;
+  }
+  return reparada;
+};
+
 // Parsea un Buffer de CSV (tal como llega de multer) a un arreglo de filas
-// { nombreColumna: valor }, respetando los headers originales del archivo.
+// { nombreColumna: valor }, respetando los headers originales del archivo
+// (ya reparados de mojibake si hacía falta).
 const parseCsvBuffer = (buffer) => {
   return new Promise((resolve, reject) => {
     const filas = [];
@@ -41,7 +70,7 @@ const parseCsvBuffer = (buffer) => {
 
     stream
       .pipe(csv())
-      .on('data', (row) => filas.push(row))
+      .on('data', (row) => filas.push(repararFilaMojibake(row)))
       .on('end', () => resolve(filas))
       .on('error', reject);
   });
@@ -60,9 +89,15 @@ const mapRowToTicket = (row) => {
   });
 
   // La columna de cédula varía en acentos/espacios según el export del
-  // momento; se detecta por nombre normalizado y se guarda con el nombre
-  // canónico que usa el resto de la app.
-  const claveCedula = Object.keys(row).find(k => quitarAcentos(k).includes('cedula'));
+  // momento, y algunos exports traen OTRA columna que también contiene la
+  // palabra "cédula" en su nombre (ej. una pregunta de consentimiento tipo
+  // "¿Entiende que debe presentar su cédula?" con respuesta "Entiendo").
+  // Por eso no alcanza con quedarse con la primera columna que coincida:
+  // entre todas las que coinciden, se prefiere la que tenga forma de
+  // cédula real (solo números); si ninguna la tiene, se usa la primera
+  // como antes (mejor eso que nada).
+  const clavesCedula = Object.keys(row).filter(k => quitarAcentos(k).includes('cedula'));
+  const claveCedula = clavesCedula.find(k => CEDULA_REGEX.test(String(row[k] || '').trim())) || clavesCedula[0];
   doc['Numero de Cedula:'] = claveCedula ? String(row[claveCedula] || '').trim() : '';
 
   const faltantes = REQUERIDOS.filter(campo => !doc[campo]);
@@ -74,4 +109,4 @@ const mapRowToTicket = (row) => {
   return doc;
 };
 
-module.exports = { parseCsvBuffer, mapRowToTicket, CAMPOS_DIRECTOS, REQUERIDOS };
+module.exports = { parseCsvBuffer, mapRowToTicket, repararMojibake, CAMPOS_DIRECTOS, REQUERIDOS };
