@@ -2,6 +2,28 @@ const Ticket = require('../models/Ticket');
 const AuditLog = require('../models/AuditLog');
 const { parseCsvBuffer, mapRowToTicket } = require('../utils/csvImportHelpers');
 const { emitTicketUpdates } = require('../utils/printHelpers');
+const { CAMPOS_CEDULA } = require('../utils/searchHelpers');
+
+// SquadUp exporta la cédula UNA sola vez por Transaction ID (en la primera
+// fila de esa compra), dejando el resto de las filas de la misma transacción
+// sin cédula. Se arma un mapa Transaction ID -> cédula con la primera que se
+// encuentre entre TODAS las filas del archivo, para completar las que vengan
+// vacías (tanto en tickets nuevos como en los que ya existían en la base).
+const armarCedulaPorTransaccion = (docs) => {
+  const mapa = new Map();
+  for (const doc of docs) {
+    const transId = doc['Transaction ID'];
+    const cedula = doc['Numero de Cedula:'];
+    if (transId && cedula && !mapa.has(transId)) {
+      mapa.set(transId, cedula);
+    }
+  }
+  return mapa;
+};
+
+// true si el documento ya tiene una cédula cargada en CUALQUIER variante de
+// nombre de columna (con/sin tilde) — no hace falta tocarlo
+const tieneCedulaCargada = (doc) => CAMPOS_CEDULA.some(campo => String(doc[campo] || '').trim());
 
 // @desc    Importar un CSV del evento: agrega SOLO los tickets que todavía
 // no existen (por "Ticket ID"), sin tocar los que ya están (no se pisa
@@ -59,6 +81,19 @@ const importCsv = async (req, res) => {
         success: false,
         message: 'No se encontró ningún ticket válido en el archivo (revise que tenga las columnas correctas)'
       });
+    }
+
+    // --- Completar cédula faltante usando otras filas de la misma transacción ---
+    const cedulaPorTransaccion = armarCedulaPorTransaccion(candidatos);
+    let cedulasCompletadasNuevos = 0;
+    for (const doc of candidatos) {
+      if (!doc['Numero de Cedula:']) {
+        const cedula = cedulaPorTransaccion.get(doc['Transaction ID']);
+        if (cedula) {
+          doc['Numero de Cedula:'] = cedula;
+          cedulasCompletadasNuevos++;
+        }
+      }
     }
 
     // --- Reconciliar con tickets creados a mano ("Agregar Ticket") ---
@@ -146,14 +181,21 @@ const importCsv = async (req, res) => {
       });
     }
 
-    // Averiguar cuáles ya existen para no tocarlos
+    // Averiguar cuáles ya existen para no tocar su canje/impresión. La única
+    // excepción es la cédula: si al ticket ya existente le falta (en
+    // cualquier variante de columna) y esta importación trae la cédula de
+    // otra fila de la misma transacción, se completa más abajo.
     const idsCandidatos = candidatos.map(d => d['Ticket ID']);
     // OJO: la proyección va como objeto, NO como string. Mongoose interpreta
     // .select('Ticket ID') como dos campos separados por espacio ("Ticket" e
     // "ID"), así que el campo real nunca vuelve y todos los tickets parecen
     // nuevos aunque ya existan.
     const existentes = await TicketModel.find({ 'Ticket ID': { $in: idsCandidatos } })
-      .select({ 'Ticket ID': 1 })
+      .select({
+        'Ticket ID': 1,
+        'Transaction ID': 1,
+        ...Object.fromEntries(CAMPOS_CEDULA.map(campo => [campo, 1]))
+      })
       .lean();
     const existentesSet = new Set(existentes.map(t => t['Ticket ID']));
 
@@ -190,6 +232,30 @@ const importCsv = async (req, res) => {
     }
 
     const yaExistian = existentesSet.size + duplicadosAlInsertar;
+
+    // --- Completar cédula faltante en tickets que YA existían ---
+    // No se toca canjeado/impreso/quién retiró: solo se rellena la cédula
+    // si ninguna de las variantes de columna la tenía cargada.
+    let ticketsConCedulaCompletada = [];
+    const sinCedula = existentes.filter(t => !tieneCedulaCargada(t));
+    const bulkOpsCedula = sinCedula
+      .map(t => ({ ticketId: t['Ticket ID'], cedula: cedulaPorTransaccion.get(t['Transaction ID']) }))
+      .filter(op => op.cedula)
+      .map(({ ticketId, cedula }) => ({
+        updateOne: {
+          filter: { 'Ticket ID': ticketId },
+          update: { $set: { 'Numero de Cedula:': cedula } }
+        }
+      }));
+
+    if (bulkOpsCedula.length > 0) {
+      await TicketModel.collection.bulkWrite(bulkOpsCedula, { ordered: false });
+      ticketsConCedulaCompletada = await TicketModel.find({
+        'Ticket ID': { $in: bulkOpsCedula.map(op => op.updateOne.filter['Ticket ID']) }
+      });
+    }
+
+    const cedulasCompletadas = cedulasCompletadasNuevos + ticketsConCedulaCompletada.length;
 
     // --- Detección de tickets eliminados del evento ---
     // Todo ticket que esté en la base pero YA NO venga en el CSV significa
@@ -242,7 +308,8 @@ const importCsv = async (req, res) => {
       omitidosPorDatosIncompletos,
       erroresInsercion,
       eliminados: idsDesaparecidos.length,
-      eliminadosYaCanjeados: eliminadosTrasCanje.length
+      eliminadosYaCanjeados: eliminadosTrasCanje.length,
+      cedulasCompletadas
     };
 
     try {
@@ -288,6 +355,11 @@ const importCsv = async (req, res) => {
         emitTicketUpdates(io, ticketsReconciliados, 'ticket-reconciliado');
       }
 
+      // Pintar en vivo los tickets existentes a los que se les completó la cédula
+      if (ticketsConCedulaCompletada.length > 0) {
+        emitTicketUpdates(io, ticketsConCedulaCompletada, 'cedula-completada');
+      }
+
       // Pintar en vivo los tickets que quedaron marcados como eliminados
       if (ticketsEliminados.length > 0) {
         emitTicketUpdates(io, ticketsEliminados, 'ticket-eliminado');
@@ -305,6 +377,9 @@ const importCsv = async (req, res) => {
     let message = `${insertados} ticket(s) nuevo(s) agregado(s). ${yaExistian} ya existían y no se modificaron.`;
     if (reconciliaciones.length > 0) {
       message += ` ${reconciliaciones.length} ticket(s) agregado(s) manualmente se completaron con los datos reales del CSV.`;
+    }
+    if (cedulasCompletadas > 0) {
+      message += ` ${cedulasCompletadas} cédula(s) completada(s) automáticamente usando otra fila de la misma Transaction ID.`;
     }
     if (idsDesaparecidos.length > 0) {
       message += ` ${idsDesaparecidos.length} ya no están en el archivo y se marcaron como eliminados`;

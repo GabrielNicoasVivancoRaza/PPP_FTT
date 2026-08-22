@@ -75,8 +75,13 @@ app.options('*', cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Trust proxy for rate limiting
-app.set('trust proxy', 1);
+// Trust proxy: Render tiene más de un salto de proxy interno entre el
+// usuario y esta app. Con "1" (un solo salto confiado), Express se queda
+// con la IP interna del proxy de Render (10.x.x.x, igual para todos)
+// en vez de la IP real del cliente. Con "true" se confía en toda la
+// cadena X-Forwarded-For y se toma la primera IP (la del cliente real).
+// Es seguro acá porque Render es la única entrada posible a esta app.
+app.set('trust proxy', true);
 
 // Health check endpoints (BEFORE other routes)
 app.get('/health', (req, res) => {

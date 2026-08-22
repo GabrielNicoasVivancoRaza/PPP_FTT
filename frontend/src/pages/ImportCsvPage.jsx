@@ -48,12 +48,15 @@ const ImportCsvPage = () => {
         setArchivo(null);
         if (inputRef.current) inputRef.current.value = '';
 
-        const { nuevosAgregados, yaExistian, reconciliados = 0, eliminados = 0, eliminadosYaCanjeados = 0 } = response.data;
+        const { nuevosAgregados, yaExistian, reconciliados = 0, eliminados = 0, eliminadosYaCanjeados = 0, cedulasCompletadas = 0 } = response.data;
 
         let html = `<strong>${nuevosAgregados}</strong> ticket(s) nuevo(s) agregado(s)<br/>` +
                    `${yaExistian} ya existían (sin modificar)`;
         if (reconciliados > 0) {
           html += `<br/><strong>${reconciliados}</strong> ticket(s) agregado(s) manualmente se completaron con el CSV real`;
+        }
+        if (cedulasCompletadas > 0) {
+          html += `<br/><strong>${cedulasCompletadas}</strong> cédula(s) completada(s) automáticamente (misma Transaction ID)`;
         }
         if (eliminados > 0) {
           html += `<br/><span class="text-danger"><strong>${eliminados}</strong> ya no están en el archivo y se marcaron como eliminados</span>`;
@@ -158,6 +161,12 @@ const ImportCsvPage = () => {
                     <li className="mb-2">
                       <span className="badge bg-info text-dark me-2">{ultimoResultado.reconciliados}</span>
                       agregados manualmente y completados con el CSV real
+                    </li>
+                  )}
+                  {ultimoResultado.cedulasCompletadas > 0 && (
+                    <li className="mb-2">
+                      <span className="badge bg-info text-dark me-2">{ultimoResultado.cedulasCompletadas}</span>
+                      cédulas completadas automáticamente (misma Transaction ID)
                     </li>
                   )}
                   {ultimoResultado.omitidosPorDatosIncompletos > 0 && (
