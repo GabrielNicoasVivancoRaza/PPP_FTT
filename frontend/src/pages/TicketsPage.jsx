@@ -6,7 +6,7 @@ import socketService from '../services/socket';
 import { printerSettingsService, ticketService } from '../services';
 import { useScanSession } from '../context/ScanSessionContext';
 import { getCedula, getLast4 } from '../utils/ticketFields';
-import { onlyDigits, onlyLetters, isValidPhone, isValidName, isValidCedula } from '../utils/validators';
+import { onlyDigits, onlyLetters, onlyAlphanumeric, isValidPhone, isValidName, isValidCedula } from '../utils/validators';
 import Swal from 'sweetalert2';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
@@ -740,7 +740,7 @@ const TicketsPage = () => {
     }
 
     if (!isValidCedula(printForm.cedulaQuienRetira)) {
-      Swal.fire('Cédula inválida', 'La cédula debe contener solo números (5 a 15 dígitos)', 'warning');
+      Swal.fire('Cédula inválida', 'Ingrese un número de cédula, RUC o pasaporte válido (5 a 15 caracteres, con al menos un número)', 'warning');
       return;
     }
 
@@ -968,7 +968,7 @@ const TicketsPage = () => {
     }
 
     if (!isValidCedula(bulkCanjeForm.cedulaQuienRetira)) {
-      Swal.fire('Cédula inválida', 'La cédula debe contener solo números (5 a 15 dígitos)', 'warning');
+      Swal.fire('Cédula inválida', 'Ingrese un número de cédula, RUC o pasaporte válido (5 a 15 caracteres, con al menos un número)', 'warning');
       return;
     }
 
@@ -2034,12 +2034,11 @@ const TicketsPage = () => {
                         <label className="form-label">Cédula de quien retira *</label>
                         <input
                           type="text"
-                          inputMode="numeric"
                           className="form-control"
-                          placeholder="Número de cédula"
+                          placeholder="Cédula, RUC o pasaporte"
                           value={printForm.cedulaQuienRetira}
                           maxLength={15}
-                          onChange={(e) => setPrintForm({...printForm, cedulaQuienRetira: onlyDigits(e.target.value)})}
+                          onChange={(e) => setPrintForm({...printForm, cedulaQuienRetira: onlyAlphanumeric(e.target.value)})}
                         />
                       </div>
 
@@ -2204,12 +2203,11 @@ const TicketsPage = () => {
                         <label className="form-label">Cédula de quien retira *</label>
                         <input
                           type="text"
-                          inputMode="numeric"
                           className="form-control"
-                          placeholder="Número de cédula"
+                          placeholder="Cédula, RUC o pasaporte"
                           value={bulkCanjeForm.cedulaQuienRetira}
                           maxLength={15}
-                          onChange={(e) => setBulkCanjeForm({...bulkCanjeForm, cedulaQuienRetira: onlyDigits(e.target.value)})}
+                          onChange={(e) => setBulkCanjeForm({...bulkCanjeForm, cedulaQuienRetira: onlyAlphanumeric(e.target.value)})}
                         />
                       </div>
 

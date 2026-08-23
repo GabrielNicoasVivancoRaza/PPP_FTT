@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { ticketService } from '../services';
 import api from '../services/api';
 import Swal from 'sweetalert2';
+import { onlyAlphanumeric } from '../utils/validators';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
 const ROLES_PERMITIDOS = ['jefe', 'importador'];
@@ -151,8 +152,8 @@ const AgregarTicketPage = () => {
                     type="text"
                     className="form-control"
                     value={form.cedula}
-                    onChange={(e) => handleChange('cedula', e.target.value.replace(/\D/g, ''))}
-                    placeholder="Solo números"
+                    onChange={(e) => handleChange('cedula', onlyAlphanumeric(e.target.value))}
+                    placeholder="Cédula, RUC o pasaporte"
                     disabled={guardando}
                   />
                 </div>

@@ -521,14 +521,21 @@ const getTicketStats = async (req, res) => {
       matchQuery.puntoTrabajo = puntoTrabajo;
     }
 
-    // Filtros de fecha para canjes
+    // Filtros de fecha para canjes. Si viene solo la fecha (YYYY-MM-DD, como
+    // manda un <input type="date">) se interpreta como día completo en hora
+    // Ecuador (UTC-5); si no, se respeta el datetime tal cual venga.
+    const soloFecha = /^\d{4}-\d{2}-\d{2}$/;
     if (fechaInicio || fechaFin) {
       matchQuery.fechaCanje = {};
       if (fechaInicio) {
-        matchQuery.fechaCanje.$gte = new Date(fechaInicio);
+        matchQuery.fechaCanje.$gte = soloFecha.test(fechaInicio)
+          ? new Date(`${fechaInicio}T00:00:00.000-05:00`)
+          : new Date(fechaInicio);
       }
       if (fechaFin) {
-        matchQuery.fechaCanje.$lte = new Date(fechaFin);
+        matchQuery.fechaCanje.$lte = soloFecha.test(fechaFin)
+          ? new Date(`${fechaFin}T23:59:59.999-05:00`)
+          : new Date(fechaFin);
       }
     }
 
@@ -536,34 +543,36 @@ const getTicketStats = async (req, res) => {
     const TicketModel = req.TicketModel || Ticket;
     
     const [
-      totalTickets, 
+      totalTickets,
       ticketsCanjeados,
       ticketsPorDia,
-      ticketsPorPunto
+      ticketsPorPunto,
+      ticketsPorUsuario,
+      ticketsPorHora
     ] = await Promise.all([
       // Total de tickets en el sistema
       TicketModel.countDocuments(),
-      
+
       // Tickets canjeados
       TicketModel.countDocuments({ canjeado: true, ...matchQuery }),
-      
+
       // Evolución diaria de canjes
       TicketModel.aggregate([
         { $match: { canjeado: true, ...matchQuery } },
         {
           $group: {
             _id: {
-              $dateToString: { format: "%Y-%m-%d", date: "$fechaCanje" }
+              $dateToString: { format: "%Y-%m-%d", date: "$fechaCanje", timezone: "-05:00" }
             },
             count: { $sum: 1 }
           }
         },
         { $sort: { _id: 1 } }
       ]),
-      
+
       // Tickets canjeados por punto de trabajo
       TicketModel.aggregate([
-        { $match: { canjeado: true } },
+        { $match: { canjeado: true, ...matchQuery } },
         {
           $group: {
             _id: "$puntoTrabajo",
@@ -571,11 +580,53 @@ const getTicketStats = async (req, res) => {
           }
         },
         { $sort: { count: -1 } }
+      ]),
+
+      // Tickets canjeados por usuario (quién hizo el canje)
+      TicketModel.aggregate([
+        { $match: { canjeado: true, ...matchQuery } },
+        { $group: { _id: '$usuarioCanje', count: { $sum: 1 } } },
+        {
+          $lookup: {
+            from: 'Usuarios',
+            localField: '_id',
+            foreignField: '_id',
+            as: 'usuario'
+          }
+        },
+        { $unwind: { path: '$usuario', preserveNullAndEmptyArrays: true } },
+        {
+          $project: {
+            _id: 0,
+            nombre: { $ifNull: ['$usuario.nombre', 'Sin asignar'] },
+            count: 1
+          }
+        },
+        { $sort: { count: -1 } }
+      ]),
+
+      // Tickets canjeados por hora del día (0-23, hora Ecuador)
+      TicketModel.aggregate([
+        { $match: { canjeado: true, ...matchQuery } },
+        {
+          $group: {
+            _id: { $hour: { date: '$fechaCanje', timezone: '-05:00' } },
+            count: { $sum: 1 }
+          }
+        },
+        { $sort: { _id: 1 } }
       ])
     ]);
 
     const porcentajeCanjeados = totalTickets > 0 ? (ticketsCanjeados / totalTickets) * 100 : 0;
     const ticketsRestantes = totalTickets - ticketsCanjeados;
+
+    // Se completan las 24 horas del día (aunque no tengan canjes) para que
+    // el gráfico de barras por hora siempre muestre el eje completo.
+    const conteoPorHora = new Array(24).fill(0);
+    ticketsPorHora.forEach(({ _id, count }) => {
+      conteoPorHora[_id] = count;
+    });
 
     res.json({
       success: true,
@@ -585,7 +636,9 @@ const getTicketStats = async (req, res) => {
         ticketsRestantes,
         porcentajeCanjeados: Math.round(porcentajeCanjeados * 100) / 100,
         evolucionDiaria: ticketsPorDia,
-        ticketsPorPunto
+        ticketsPorPunto,
+        ticketsPorUsuario,
+        ticketsPorHora: conteoPorHora.map((count, hora) => ({ hora, count }))
       }
     });
 
@@ -635,8 +688,11 @@ const getReporteDiario = async (req, res) => {
       });
     }
 
-    const desde = new Date(`${fecha}T00:00:00.000Z`);
-    const hasta = new Date(`${fecha}T23:59:59.999Z`);
+    // Límites del día en hora de Ecuador (UTC-5), no UTC: si se usara UTC,
+    // los canjes de la noche (19:00-23:59 Ecuador) quedarían registrados
+    // como si fueran del día siguiente, partiendo un solo día en dos.
+    const desde = new Date(`${fecha}T00:00:00.000-05:00`);
+    const hasta = new Date(`${fecha}T23:59:59.999-05:00`);
 
     const TicketModel = req.TicketModel || Ticket;
 
@@ -750,7 +806,7 @@ const canjeTicket = async (req, res) => {
     if (!isValidCedula(cedulaQuienRetira)) {
       return res.status(400).json({
         success: false,
-        message: 'La cédula debe contener solo números (5 a 15 dígitos)'
+        message: 'Ingrese un número de cédula, RUC o pasaporte válido (5 a 15 caracteres, con al menos un número)'
       });
     }
 
@@ -1014,7 +1070,7 @@ const bulkCanjeTickets = async (req, res) => {
     if (!isValidCedula(cedulaQuienRetira)) {
       return res.status(400).json({
         success: false,
-        message: 'La cédula debe contener solo números (5 a 15 dígitos)'
+        message: 'Ingrese un número de cédula, RUC o pasaporte válido (5 a 15 caracteres, con al menos un número)'
       });
     }
 
