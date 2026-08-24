@@ -351,6 +351,7 @@ const UsersPage = () => {
                           <option value="impresor_solo">Impresor (canjea e imprime él mismo)</option>
                           <option value="impresor_cola">Impresor (recibe cola de solicitudes)</option>
                           <option value="importador">Importador (sube el CSV del evento)</option>
+                          <option value="jefe">Jefe (administrador)</option>
                         </select>
                         {editingUser && editingUser._id === user._id && (
                           <small className="form-text text-muted">
