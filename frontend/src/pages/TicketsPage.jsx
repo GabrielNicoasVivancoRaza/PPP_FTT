@@ -1567,21 +1567,11 @@ const TicketsPage = () => {
             </div>
           </div>
 
-          {/* Validaciones para mostrar contenido */}
-          {isJefe && !selectedPuntoVenta ? (
-            <div className="alert alert-info text-center">
-              <h5>Seleccione un punto de venta</h5>
-              <p>Debe seleccionar un punto de venta para ver los tickets correspondientes.</p>
-              {puntosVenta.length === 0 && (
-                <p>
-                  <small>
-                    <strong>Nota:</strong> No hay puntos de venta disponibles. 
-                    Debe crearlos primero en la sección "Puntos de Venta".
-                  </small>
-                </p>
-              )}
-            </div>
-          ) : !isJefe && !user?.puntoTrabajo ? (
+          {/* Validaciones para mostrar contenido. El jefe ve todos los
+              tickets de todas las localidades por default (ya se cargan
+              con fetchAllTickets sin necesidad de elegir nada); elegir un
+              punto de venta es opcional, para filtrar. */}
+          {!isJefe && !user?.puntoTrabajo ? (
             <div className="alert alert-warning text-center">
               <h5>Sin punto de trabajo asignado</h5>
               <p>Su usuario no tiene un punto de trabajo asignado. Contacte al administrador.</p>
