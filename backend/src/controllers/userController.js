@@ -1,18 +1,28 @@
 const User = require('../models/User');
 const { isValidName } = require('../utils/validators');
 const { createUserAuditLog } = require('../utils/auditLogger');
+const { ROLES, getRoles, necesitaPuntoTrabajo } = require('../utils/roles');
+
+// Un usuario puede tener más de un rol a la vez. Se acepta "roles" (array,
+// forma nueva) o "rol" (string, forma vieja) para no romper ningún llamador
+// que todavía mande el campo único.
+const rolesDelBody = (body) => {
+  if (Array.isArray(body.roles) && body.roles.length > 0) return [...new Set(body.roles)];
+  return body.rol ? [body.rol] : [];
+};
 
 // @desc    Crear nuevo usuario
 // @route   POST /api/users
 // @access  Private (solo jefe)
 const createUser = async (req, res) => {
   try {
-    const { nombre, usuario, rol, puntoTrabajo } = req.body;
+    const { nombre, usuario, puntoTrabajo } = req.body;
+    const roles = rolesDelBody(req.body);
 
-    if (!nombre || !usuario || !rol) {
+    if (!nombre || !usuario || roles.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'Nombre, usuario y rol son requeridos'
+        message: 'Nombre, usuario y al menos un rol son requeridos'
       });
     }
 
@@ -23,7 +33,14 @@ const createUser = async (req, res) => {
       });
     }
 
-    if (rol !== 'jefe' && rol !== 'importador' && !puntoTrabajo) {
+    if (!roles.every(r => ROLES.includes(r))) {
+      return res.status(400).json({
+        success: false,
+        message: 'Rol inválido'
+      });
+    }
+
+    if (necesitaPuntoTrabajo(roles) && !puntoTrabajo) {
       return res.status(400).json({
         success: false,
         message: 'Punto de trabajo es requerido para este rol'
@@ -44,8 +61,8 @@ const createUser = async (req, res) => {
       nombre,
       usuario,
       password: process.env.DEFAULT_PASSWORD,
-      rol,
-      puntoTrabajo: rol !== 'jefe' ? puntoTrabajo : undefined,
+      roles,
+      puntoTrabajo: necesitaPuntoTrabajo(roles) ? puntoTrabajo : undefined,
       creadoPor: req.user._id,
       primerAcceso: true
     });
@@ -96,11 +113,14 @@ const getUsers = async (req, res) => {
 // @desc    Actualizar usuario
 // @route   PUT /api/users/:id
 // @access  Private (solo jefe)
-const ROLES_VALIDOS = User.schema.path('rol').enumValues;
-
 const updateUser = async (req, res) => {
   try {
-    const { nombre, rol, puntoTrabajo, activo } = req.body;
+    const { nombre, puntoTrabajo, activo } = req.body;
+    // "roles" solo se toma en cuenta si vino explícitamente en el body
+    // (array o el "rol" viejo); si no vino ninguno de los dos, no se toca.
+    const rolesEnviados = (req.body.roles !== undefined || req.body.rol !== undefined)
+      ? rolesDelBody(req.body)
+      : null;
     const userId = req.params.id;
 
     const user = await User.findById(userId);
@@ -119,12 +139,18 @@ const updateUser = async (req, res) => {
       });
     }
 
-    // No permitir cambiarse el rol a uno mismo: si se equivoca de rol se
-    // queda sin poder administrar usuarios y sin forma de revertirlo
-    if (userId === req.user._id.toString() && rol && rol !== user.rol) {
+    const rolesActuales = getRoles(user);
+    const rolesCambiaron = rolesEnviados && (
+      rolesEnviados.length !== rolesActuales.length ||
+      rolesEnviados.some(r => !rolesActuales.includes(r))
+    );
+
+    // No permitir cambiarse los roles a uno mismo: si se equivoca se queda
+    // sin poder administrar usuarios y sin forma de revertirlo
+    if (userId === req.user._id.toString() && rolesCambiaron) {
       return res.status(400).json({
         success: false,
-        message: 'No puedes cambiar tu propio rol'
+        message: 'No puedes cambiar tus propios roles'
       });
     }
 
@@ -138,15 +164,15 @@ const updateUser = async (req, res) => {
       user.nombre = nombre;
     }
 
-    if (rol) {
-      if (!ROLES_VALIDOS.includes(rol)) {
+    if (rolesEnviados) {
+      if (rolesEnviados.length === 0 || !rolesEnviados.every(r => ROLES.includes(r))) {
         return res.status(400).json({
           success: false,
           message: 'Rol inválido'
         });
       }
 
-      const requierePuntoTrabajo = rol !== 'jefe' && rol !== 'importador';
+      const requierePuntoTrabajo = necesitaPuntoTrabajo(rolesEnviados);
       const puntoTrabajoFinal = requierePuntoTrabajo ? (puntoTrabajo || user.puntoTrabajo) : undefined;
 
       if (requierePuntoTrabajo && !puntoTrabajoFinal) {
@@ -156,9 +182,9 @@ const updateUser = async (req, res) => {
         });
       }
 
-      user.rol = rol;
+      user.roles = rolesEnviados;
       user.puntoTrabajo = puntoTrabajoFinal;
-    } else if (puntoTrabajo && user.rol !== 'jefe' && user.rol !== 'importador') {
+    } else if (puntoTrabajo && necesitaPuntoTrabajo(rolesActuales)) {
       user.puntoTrabajo = puntoTrabajo;
     }
 

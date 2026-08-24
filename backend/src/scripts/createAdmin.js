@@ -12,9 +12,11 @@ const createAdminUser = async () => {
 
     console.log('✅ Conectado a MongoDB');
 
-    // Verificar si ya existe un usuario jefe
-    const adminExists = await User.findOne({ rol: 'jefe' });
-    
+    // Verificar si ya existe un usuario jefe. "roles: 'jefe'" matchea a
+    // cualquier documento donde 'jefe' esté en el array; "rol: 'jefe'"
+    // cubre además las cuentas viejas que todavía no tienen "roles".
+    const adminExists = await User.findOne({ $or: [{ rol: 'jefe' }, { roles: 'jefe' }] });
+
     if (adminExists) {
       console.log('✅ Usuario administrador ya existe:');
       console.log('   Usuario:', adminExists.usuario);
@@ -27,7 +29,7 @@ const createAdminUser = async () => {
         nombre: 'Administrador',
         usuario: 'admin@shakira.com',
         password: process.env.DEFAULT_PASSWORD || 'FTT2025',
-        rol: 'jefe',
+        roles: ['jefe'],
         primerAcceso: true,
         activo: true
       });

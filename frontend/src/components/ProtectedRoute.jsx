@@ -1,6 +1,7 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { hasAnyRole } from '../utils/roles';
 
 const ProtectedRoute = ({ children, roles = [] }) => {
   const { isAuthenticated, user, loading } = useAuth();
@@ -20,8 +21,9 @@ const ProtectedRoute = ({ children, roles = [] }) => {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  const userRole = user?.role || user?.rol;
-  if (roles.length > 0 && !roles.includes(userRole)) {
+  // Un usuario puede tener más de un rol: alcanza con que uno de los
+  // suyos esté permitido en esta ruta.
+  if (roles.length > 0 && !hasAnyRole(user, roles)) {
     return <Navigate to="/unauthorized" replace />;
   }
 

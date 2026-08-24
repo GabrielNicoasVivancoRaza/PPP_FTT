@@ -2,14 +2,7 @@ import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { FTT_LOGO } from '../assets/fttLogo';
-
-const ROLE_INFO = {
-  jefe: { label: 'Jefe', className: 'role-badge-jefe' },
-  staff: { label: 'Staff', className: 'role-badge-staff' },
-  impresor_solo: { label: 'Impresor', className: 'role-badge-impresor_solo' },
-  impresor_cola: { label: 'Impresor (Cola)', className: 'role-badge-impresor_cola' },
-  importador: { label: 'Importador', className: 'role-badge-importador' }
-};
+import { ROLE_INFO, getRoles } from '../utils/roles';
 
 const Navigation = () => {
   const { user, logout } = useAuth();
@@ -21,8 +14,9 @@ const Navigation = () => {
     navigate('/login');
   };
 
-  const role = user?.rol || user?.role || '';
-  const roleInfo = ROLE_INFO[role] || { label: role, className: 'role-badge-default' };
+  // Un usuario puede tener más de un rol: los ítems de menú se muestran si
+  // TIENE ese rol entre los suyos (no si es el único).
+  const roles = getRoles(user);
   const initial = (user?.nombre || 'U').trim().charAt(0).toUpperCase();
 
   const navLinkClass = (path) =>
@@ -59,7 +53,7 @@ const Navigation = () => {
         <div className="collapse navbar-collapse" id="navbarNav">
           {/* Left nav links */}
           <ul className="navbar-nav me-auto ftt-nav">
-            {role === 'jefe' && (
+            {roles.includes('jefe') && (
               <>
                 <li className="nav-item">
                   <button
@@ -120,7 +114,7 @@ const Navigation = () => {
               </>
             )}
 
-            {role === 'importador' && (
+            {roles.includes('importador') && (
               <li className="nav-item">
                 <button
                   className={navLinkClass('/importar-csv')}
@@ -131,7 +125,7 @@ const Navigation = () => {
               </li>
             )}
 
-            {(role === 'jefe' || role === 'importador') && (
+            {(roles.includes('jefe') || roles.includes('importador')) && (
               <>
                 <li className="nav-item">
                   <button
@@ -152,7 +146,7 @@ const Navigation = () => {
               </>
             )}
 
-            {(role === 'jefe' || role === 'staff' || role === 'impresor_solo') && (
+            {(roles.includes('jefe') || roles.includes('staff') || roles.includes('impresor_solo')) && (
               <li className="nav-item">
                 <button
                   className={navLinkClass('/tickets')}
@@ -163,7 +157,7 @@ const Navigation = () => {
               </li>
             )}
 
-            {role === 'impresor_cola' && (
+            {roles.includes('impresor_cola') && (
               <li className="nav-item">
                 <button
                   className={navLinkClass('/cola-impresion')}
@@ -174,7 +168,7 @@ const Navigation = () => {
               </li>
             )}
 
-            {(role === 'jefe' || role === 'impresor_cola') && (
+            {(roles.includes('jefe') || roles.includes('impresor_cola')) && (
               <li className="nav-item">
                 <button
                   className={navLinkClass('/impresos')}
@@ -195,20 +189,28 @@ const Navigation = () => {
                 data-bs-toggle="dropdown"
                 data-bs-display="static"
                 aria-expanded="false"
-                title={`${user?.nombre || 'Usuario'} • ${roleInfo.label}`}
+                title={`${user?.nombre || 'Usuario'} • ${roles.map(r => (ROLE_INFO[r] || {}).label || r).join(', ')}`}
               >
                 <span className="ftt-user-avatar">{initial}</span>
                 <span className="d-none d-sm-flex flex-column align-items-start lh-sm">
                   <span className="fw-semibold user-name text-truncate" style={{maxWidth: 160}}>
                     {user?.nombre || 'Usuario'}
                   </span>
-                  <span className={`role-badge ${roleInfo.className}`}>{roleInfo.label}</span>
+                  <span className="d-flex flex-wrap gap-1">
+                    {roles.map(r => {
+                      const info = ROLE_INFO[r] || { label: r, className: 'role-badge-default' };
+                      return <span key={r} className={`role-badge ${info.className}`}>{info.label}</span>;
+                    })}
+                  </span>
                 </span>
               </button>
               <ul className="dropdown-menu dropdown-menu-end shadow">
-                <li className="px-3 py-2 small text-muted d-sm-none d-flex align-items-center gap-2">
+                <li className="px-3 py-2 small text-muted d-sm-none d-flex align-items-center gap-2 flex-wrap">
                   {user?.nombre || 'Usuario'}
-                  <span className={`role-badge ${roleInfo.className}`}>{roleInfo.label}</span>
+                  {roles.map(r => {
+                    const info = ROLE_INFO[r] || { label: r, className: 'role-badge-default' };
+                    return <span key={r} className={`role-badge ${info.className}`}>{info.label}</span>;
+                  })}
                 </li>
                 <li>
                   <button

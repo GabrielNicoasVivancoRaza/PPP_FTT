@@ -131,9 +131,29 @@ export const ticketService = {
     return response.data;
   },
 
-  // Alta manual de un ticket (rol importador): entra ya como canjeado
+  // Alta manual de un ticket (rol importador): entra ya como canjeado.
+  // Timeout más largo que el default (10s): son varias escrituras seguidas
+  // en Mongo (chequeo de duplicado + insert + auditoría) y un timeout del
+  // lado del navegador no significa que el servidor no lo haya terminado
+  // de guardar, solo que la respuesta no llegó a tiempo.
   crearTicketManual: async (datos) => {
-    const response = await api.post('/tickets/manual', datos);
+    const response = await api.post('/tickets/manual', datos, { timeout: 25000 });
+    return response.data;
+  },
+
+  // Tickets agregados a mano desde "Agregar Ticket" (para editar/eliminar)
+  getTicketsManuales: async () => {
+    const response = await api.get('/tickets/manual');
+    return response.data;
+  },
+
+  editarTicketManual: async (ticketId, datos) => {
+    const response = await api.put(`/tickets/manual/${encodeURIComponent(ticketId)}`, datos, { timeout: 25000 });
+    return response.data;
+  },
+
+  eliminarTicketManual: async (ticketId) => {
+    const response = await api.delete(`/tickets/manual/${encodeURIComponent(ticketId)}`);
     return response.data;
   },
 

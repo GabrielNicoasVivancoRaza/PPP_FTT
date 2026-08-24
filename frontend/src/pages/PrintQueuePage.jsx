@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { printerSettingsService, printRequestService } from '../services';
 import socketService from '../services/socket';
 import Swal from 'sweetalert2';
+import { hasAnyRole } from '../utils/roles';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
 const SQUADUP_PRINT_URL = 'https://www.squadup.com/api/dashboard/payments/print_boca_tickets?ids=';
@@ -191,7 +192,7 @@ const PrintQueuePage = () => {
     }
   };
 
-  if (user?.rol !== 'impresor_cola' && user?.rol !== 'jefe') {
+  if (!hasAnyRole(user, ['impresor_cola', 'jefe'])) {
     return (
       <div className="container-fluid">
         <div className="alert alert-warning">No tiene permisos para acceder a esta página.</div>

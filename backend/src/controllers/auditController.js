@@ -35,7 +35,7 @@ const getAuditLogs = async (req, res) => {
 
     const [logs, total] = await Promise.all([
       AuditLog.find(query)
-        .populate('usuario', 'nombre usuario rol puntoTrabajo')
+        .populate('usuario', 'nombre usuario rol roles puntoTrabajo')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit)),

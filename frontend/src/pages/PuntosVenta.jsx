@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import Swal from 'sweetalert2';
+import { hasRole, getRoles } from '../utils/roles';
 
 const PuntosVenta = () => {
   const { user, token } = useAuth();
@@ -202,13 +203,13 @@ const PuntosVenta = () => {
     });
   };
 
-  if (user?.role !== 'jefe' && user?.rol !== 'jefe') {
+  if (!hasRole(user, 'jefe')) {
     return (
       <div className="container mt-4">
         <div className="alert alert-warning">
           <h4>Acceso Denegado</h4>
           <p>Solo los jefes pueden gestionar puntos de venta.</p>
-          <p><small>Usuario actual: {user?.role || user?.rol} - {user?.nombre}</small></p>
+          <p><small>Usuario actual: {getRoles(user).join(', ')} - {user?.nombre}</small></p>
         </div>
       </div>
     );

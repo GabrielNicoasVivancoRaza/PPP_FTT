@@ -1,11 +1,12 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const AuditLog = require('../models/AuditLog');
+const { getRoles } = require('../utils/roles');
 
 // Generar JWT token
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
-    expiresIn: '8h'
+    expiresIn: '12h'
   });
 };
 
@@ -62,7 +63,10 @@ const login = async (req, res) => {
         id: user._id,
         nombre: user.nombre,
         usuario: user.usuario,
+        // "rol" se mantiene por compatibilidad (primer rol); "roles" es la
+        // lista completa y lo que debe usarse para chequear permisos.
         rol: user.rol,
+        roles: getRoles(user),
         puntoTrabajo: user.puntoTrabajo,
         primerAcceso: user.primerAcceso
       }
@@ -174,7 +178,9 @@ const getProfile = async (req, res) => {
   try {
     res.json({
       success: true,
-      user: req.user
+      // req.user puede venir de una cuenta vieja sin "roles" poblado
+      // todavía; se completa acá para que el frontend siempre lo reciba.
+      user: { ...req.user.toJSON(), roles: getRoles(req.user) }
     });
   } catch (error) {
     console.error('Error al obtener perfil:', error);

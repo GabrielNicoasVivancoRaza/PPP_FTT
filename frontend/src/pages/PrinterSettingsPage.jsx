@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { printerSettingsService } from '../services';
 import Swal from 'sweetalert2';
+import { hasRole } from '../utils/roles';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
 // Paleta de colores predefinida para asignar a cada tipo de ticket
@@ -25,7 +26,7 @@ const PrinterSettingsPage = () => {
   const [colores, setColores] = useState({}); // { tipo: colorHex }
 
   useEffect(() => {
-    if (user?.rol === 'jefe') {
+    if (hasRole(user, 'jefe')) {
       cargarDatos();
     }
   }, [user]);
@@ -108,7 +109,7 @@ const PrinterSettingsPage = () => {
     }
   };
 
-  if (user?.rol !== 'jefe') {
+  if (!hasRole(user, 'jefe')) {
     return (
       <div className="container-fluid">
         <div className="alert alert-warning">No tiene permisos para acceder a esta página.</div>

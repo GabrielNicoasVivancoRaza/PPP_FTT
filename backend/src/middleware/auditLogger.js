@@ -45,7 +45,7 @@ const auditLogger = (tipo) => {
               case 'creacion_usuario':
                 logData.detalles = {
                   usuarioCreado: req.body.usuario,
-                  rol: req.body.rol,
+                  roles: req.body.roles || (req.body.rol ? [req.body.rol] : undefined),
                   puntoTrabajo: req.body.puntoTrabajo
                 };
                 break;

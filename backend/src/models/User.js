@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const { ROLES, necesitaPuntoTrabajo } = require('../utils/roles');
 
 const userSchema = new mongoose.Schema({
   nombre: {
@@ -19,17 +20,33 @@ const userSchema = new mongoose.Schema({
     required: true,
     minlength: 6
   },
+  // Se mantiene por compatibilidad con datos viejos (cuentas creadas antes
+  // de soportar varios roles a la vez) y como "rol principal" (roles[0]).
+  // No se edita a mano: el hook pre('validate') lo mantiene sincronizado
+  // con "roles". El permiso real siempre se calcula sobre "roles" (ver
+  // utils/roles.js), nunca sobre este campo directamente.
   rol: {
     type: String,
+    enum: ROLES
+  },
+  // Un usuario puede tener más de un rol simultáneo (p. ej. "staff" +
+  // "impresor_cola"): sus permisos son la unión de lo que cada uno habilita.
+  roles: {
+    type: [{ type: String, enum: ROLES }],
     required: true,
-    enum: ['jefe', 'staff', 'impresor_solo', 'impresor_cola', 'importador']
+    validate: {
+      validator: v => Array.isArray(v) && v.length > 0,
+      message: 'Debe tener al menos un rol'
+    }
   },
   puntoTrabajo: {
     type: String,
     required: function() {
-      // importador es una cuenta operativa global (solo sube CSVs), no
-      // está atada a un punto de venta
-      return this.rol !== 'jefe' && this.rol !== 'importador';
+      // Cuentas operativas globales (jefe, importador) no están atadas a
+      // un punto de trabajo; si tiene además otro rol que sí lo necesita,
+      // igual hace falta.
+      const roles = (this.roles && this.roles.length) ? this.roles : (this.rol ? [this.rol] : []);
+      return necesitaPuntoTrabajo(roles);
     },
     trim: true
   },
@@ -45,11 +62,28 @@ const userSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: function() {
-      return this.rol !== 'jefe';
+      const roles = (this.roles && this.roles.length) ? this.roles : (this.rol ? [this.rol] : []);
+      return !roles.includes('jefe');
     }
   }
 }, {
   timestamps: true
+});
+
+// Compatibilidad hacia atrás: cuentas creadas antes de este cambio solo
+// tienen "rol" (string único) guardado en Mongo, sin "roles". Al volver a
+// guardar cualquiera de esas cuentas (activar/desactivar, editar, etc.) se
+// completa "roles" desde el valor viejo; en el otro sentido, "rol" queda
+// sincronizado con el primer rol de la lista para el código que todavía
+// lo lea directamente.
+userSchema.pre('validate', function(next) {
+  if ((!this.roles || this.roles.length === 0) && this.rol) {
+    this.roles = [this.rol];
+  }
+  if (this.roles && this.roles.length > 0) {
+    this.rol = this.roles[0];
+  }
+  next();
 });
 
 // Hash password before saving

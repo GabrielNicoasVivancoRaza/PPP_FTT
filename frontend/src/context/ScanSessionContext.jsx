@@ -4,6 +4,7 @@ import { useAuth } from './AuthContext';
 import api from '../services/api';
 import socketService from '../services/socket';
 import Swal from 'sweetalert2';
+import { hasRole } from '../utils/roles';
 
 /**
  * Sesión de escaneo con el celular.
@@ -31,7 +32,8 @@ export const ScanSessionProvider = ({ children }) => {
   const [sessionCode, setSessionCode] = useState(() => localStorage.getItem(STORAGE_KEY) || null);
   const procesandoRef = useRef(false);
 
-  const userRole = user?.role || user?.rol;
+  const esJefe = hasRole(user, 'jefe');
+  const esImpresorCola = hasRole(user, 'impresor_cola');
 
   const iniciarSesion = useCallback(() => {
     const existente = localStorage.getItem(STORAGE_KEY);
@@ -60,7 +62,7 @@ export const ScanSessionProvider = ({ children }) => {
   // Notificación al administrador cuando una importación detecta tickets
   // que ya no están en el CSV del evento (anulados/reembolsados).
   useEffect(() => {
-    if (!isAuthenticated || userRole !== 'jefe') return;
+    if (!isAuthenticated || !esJefe) return;
 
     socketService.connect(token);
 
@@ -84,7 +86,7 @@ export const ScanSessionProvider = ({ children }) => {
 
     socketService.on('tickets-eliminados-detectados', onEliminados);
     return () => socketService.off('tickets-eliminados-detectados', onEliminados);
-  }, [isAuthenticated, userRole, token, navigate]);
+  }, [isAuthenticated, esJefe, token, navigate]);
 
   useEffect(() => {
     if (!sessionCode || !isAuthenticated) return;
@@ -102,7 +104,7 @@ export const ScanSessionProvider = ({ children }) => {
         if (response.data.success) {
           const { ticket, transactionCount } = response.data;
 
-          if (userRole === 'impresor_cola') {
+          if (esImpresorCola) {
             // impresor_cola no canjea: se muestra la info en la propia página del escáner
             navigate('/escanearTicket', {
               state: { scannedResult: { ticket, transactionCount }, scannedAt: Date.now() }
@@ -131,7 +133,7 @@ export const ScanSessionProvider = ({ children }) => {
 
     socketService.on('scan-detected', onScanDetected);
     return () => socketService.off('scan-detected', onScanDetected);
-  }, [sessionCode, isAuthenticated, token, userRole, navigate]);
+  }, [sessionCode, isAuthenticated, token, esImpresorCola, navigate]);
 
   const valor = {
     sessionCode,

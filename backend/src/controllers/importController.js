@@ -532,6 +532,25 @@ const crearTicketManual = async (req, res) => {
 
     const TicketModel = req.TicketModel || Ticket;
 
+    // Si la misma persona (misma cédula) ya tiene un ticket manual cargado
+    // para esta Transaction ID, no se vuelve a crear. Esto es lo que evita
+    // que un timeout del lado del navegador (la petición sí llegó a
+    // completarse en el servidor, pero la respuesta no llegó a tiempo) se
+    // traduzca en un ticket duplicado al reintentar "Agregar ticket" con
+    // los mismos datos.
+    const yaExiste = await TicketModel.exists({
+      'Transaction ID': transactionId.trim(),
+      'Numero de Cedula:': cedula.trim(),
+      creadoManualmente: true,
+      eliminado: { $ne: true }
+    });
+    if (yaExiste) {
+      return res.status(409).json({
+        success: false,
+        message: 'Ya hay un ticket manual cargado con esa Transaction ID y esa cédula. Si el intento anterior mostró un error, revisá la lista de tickets agregados: es probable que sí se haya guardado.'
+      });
+    }
+
     // El CSV trae nombre y apellido separados; acá solo se pide "Nombre",
     // así que se parte por el primer espacio para mantener la misma forma.
     const nombreLimpio = nombre.trim().replace(/\s+/g, ' ');
@@ -595,4 +614,192 @@ const crearTicketManual = async (req, res) => {
   }
 };
 
-module.exports = { importCsv, getTicketsEliminados, crearTicketManual };
+// @desc    Listar los tickets agregados a mano desde "Agregar Ticket"
+// (reconciliados con el CSV real o no), para poder editarlos/eliminarlos
+// @route   GET /api/tickets/manual
+// @access  Private (jefe, importador)
+const listarTicketsManuales = async (req, res) => {
+  try {
+    const TicketModel = req.TicketModel || Ticket;
+    const tickets = await TicketModel.find({ creadoManualmente: true, eliminado: { $ne: true } })
+      .populate('usuarioResponsable', 'nombre usuario')
+      .sort({ createdAt: -1 });
+
+    res.json({ success: true, tickets });
+  } catch (error) {
+    console.error('Error al listar tickets manuales:', error);
+    res.status(500).json({ success: false, message: 'Error interno del servidor' });
+  }
+};
+
+// @desc    Editar un ticket agregado a mano (cualquier dato cargado en
+// "Agregar Ticket"). Solo aplica a tickets con creadoManualmente:true.
+// @route   PUT /api/tickets/manual/:id
+// @access  Private (jefe, importador)
+const editarTicketManual = async (req, res) => {
+  try {
+    const ticketId = req.params.id;
+    const { nombre, localidad, cedula, email, transactionId } = req.body;
+
+    const faltantes = [];
+    if (!nombre?.trim()) faltantes.push('nombre');
+    if (!localidad?.trim()) faltantes.push('localidad');
+    if (!cedula?.trim()) faltantes.push('cédula');
+    if (!email?.trim()) faltantes.push('email');
+    if (!transactionId?.trim()) faltantes.push('Transaction ID');
+
+    if (faltantes.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Faltan campos obligatorios: ${faltantes.join(', ')}`
+      });
+    }
+
+    const TicketModel = req.TicketModel || Ticket;
+    const ticket = await TicketModel.findOne({ 'Ticket ID': ticketId });
+
+    if (!ticket) {
+      return res.status(404).json({ success: false, message: 'Ticket no encontrado' });
+    }
+    if (!ticket.creadoManualmente) {
+      return res.status(400).json({
+        success: false,
+        message: 'Solo se pueden editar tickets agregados a mano desde "Agregar Ticket"'
+      });
+    }
+
+    // Evita chocar con otro ticket manual de la misma persona en la misma
+    // transacción (mismo chequeo que al crear)
+    const otroDuplicado = await TicketModel.exists({
+      'Ticket ID': { $ne: ticketId },
+      'Transaction ID': transactionId.trim(),
+      'Numero de Cedula:': cedula.trim(),
+      creadoManualmente: true,
+      eliminado: { $ne: true }
+    });
+    if (otroDuplicado) {
+      return res.status(409).json({
+        success: false,
+        message: 'Ya hay otro ticket manual con esa Transaction ID y esa cédula'
+      });
+    }
+
+    const nombreLimpio = nombre.trim().replace(/\s+/g, ' ');
+    const partes = nombreLimpio.split(' ');
+    const firstName = partes.shift();
+    const lastName = partes.join(' ');
+
+    // Driver nativo, igual que al crearlo, para no perder campos no
+    // declarados en el schema (p. ej. Barcode Data si ya se reconcilió)
+    await TicketModel.collection.updateOne(
+      { 'Ticket ID': ticketId },
+      {
+        $set: {
+          'First Name': firstName,
+          'Last Name': lastName,
+          'Email': email.trim(),
+          'Ticket': localidad.trim(),
+          'Seat': localidad.trim(),
+          'Transaction ID': transactionId.trim(),
+          'Numero de Cedula:': cedula.trim()
+        }
+      }
+    );
+
+    const actualizado = await TicketModel.findOne({ 'Ticket ID': ticketId });
+
+    const io = req.app.get('io');
+    emitTicketUpdates(io, [actualizado], 'ticket-manual-editado');
+
+    try {
+      await AuditLog.create({
+        tipo: 'ticket_manual',
+        usuario: req.user._id,
+        ticketId,
+        transactionId: transactionId.trim(),
+        puntoTrabajo: req.user.puntoTrabajo,
+        detalles: {
+          accion: 'editar',
+          nombre: nombreLimpio,
+          localidad: localidad.trim(),
+          cedula: cedula.trim(),
+          email: email.trim()
+        },
+        ip: req.ip || 'Unknown'
+      });
+    } catch (auditError) {
+      console.error('Error al crear log de auditoría:', auditError);
+    }
+
+    res.json({
+      success: true,
+      message: 'Ticket actualizado',
+      ticket: actualizado
+    });
+  } catch (error) {
+    console.error('Error al editar ticket manual:', error);
+    res.status(500).json({ success: false, message: 'Error interno del servidor' });
+  }
+};
+
+// @desc    Eliminar (borrado real, no queda registro) un ticket agregado a
+// mano por error. Solo aplica a tickets con creadoManualmente:true.
+// @route   DELETE /api/tickets/manual/:id
+// @access  Private (jefe, importador)
+const eliminarTicketManual = async (req, res) => {
+  try {
+    const ticketId = req.params.id;
+    const TicketModel = req.TicketModel || Ticket;
+    const ticket = await TicketModel.findOne({ 'Ticket ID': ticketId });
+
+    if (!ticket) {
+      return res.status(404).json({ success: false, message: 'Ticket no encontrado' });
+    }
+    if (!ticket.creadoManualmente) {
+      return res.status(400).json({
+        success: false,
+        message: 'Solo se pueden eliminar tickets agregados a mano desde "Agregar Ticket"'
+      });
+    }
+
+    await TicketModel.deleteOne({ 'Ticket ID': ticketId });
+
+    const io = req.app.get('io');
+    emitTicketUpdates(io, [{ ...ticket.toObject(), _eliminado: true }], 'ticket-manual-eliminado');
+
+    try {
+      await AuditLog.create({
+        tipo: 'ticket_manual',
+        usuario: req.user._id,
+        ticketId,
+        transactionId: ticket['Transaction ID'],
+        puntoTrabajo: req.user.puntoTrabajo,
+        detalles: {
+          accion: 'eliminar',
+          nombre: `${ticket['First Name']} ${ticket['Last Name']}`.trim(),
+          localidad: ticket['Ticket'],
+          cedula: ticket['Numero de Cedula:'],
+          email: ticket['Email'],
+          yaEstabaReconciliado: !!ticket.reconciliadoConCsv
+        },
+        ip: req.ip || 'Unknown'
+      });
+    } catch (auditError) {
+      console.error('Error al crear log de auditoría:', auditError);
+    }
+
+    res.json({ success: true, message: 'Ticket eliminado' });
+  } catch (error) {
+    console.error('Error al eliminar ticket manual:', error);
+    res.status(500).json({ success: false, message: 'Error interno del servidor' });
+  }
+};
+
+module.exports = {
+  importCsv,
+  getTicketsEliminados,
+  crearTicketManual,
+  listarTicketsManuales,
+  editarTicketManual,
+  eliminarTicketManual
+};

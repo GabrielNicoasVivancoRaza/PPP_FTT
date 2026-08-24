@@ -3,15 +3,8 @@ import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import Swal from 'sweetalert2';
 import { onlyLetters, isValidName } from '../utils/validators';
+import { ROLES, ROLE_INFO, getRoles, hasRole, necesitaPuntoTrabajo } from '../utils/roles';
 import 'bootstrap/dist/css/bootstrap.min.css';
-
-const ROLE_INFO = {
-  jefe: { label: 'Jefe', className: 'role-badge-jefe' },
-  staff: { label: 'Staff', className: 'role-badge-staff' },
-  impresor_solo: { label: 'Impresor', className: 'role-badge-impresor_solo' },
-  impresor_cola: { label: 'Impresor (Cola)', className: 'role-badge-impresor_cola' },
-  importador: { label: 'Importador', className: 'role-badge-importador' }
-};
 
 const UsersPage = () => {
   const { user } = useAuth();
@@ -24,12 +17,12 @@ const UsersPage = () => {
   const [formData, setFormData] = useState({
     nombre: '',
     usuario: '',
-    rol: 'staff',
+    roles: ['staff'],
     puntoTrabajo: ''
   });
 
   useEffect(() => {
-    if (user?.rol === 'jefe') {
+    if (hasRole(user, 'jefe')) {
       fetchUsers();
       fetchPuntosVenta();
     }
@@ -71,8 +64,13 @@ const UsersPage = () => {
       return;
     }
 
+    if (formData.roles.length === 0) {
+      Swal.fire('Falta información', 'Debe seleccionar al menos un rol', 'warning');
+      return;
+    }
+
     // Todos los roles excepto jefe e importador requieren punto de trabajo
-    if (formData.rol !== 'jefe' && formData.rol !== 'importador' && !formData.puntoTrabajo) {
+    if (necesitaPuntoTrabajo(formData.roles) && !formData.puntoTrabajo) {
       Swal.fire('Falta información', 'Debe seleccionar un punto de trabajo', 'warning');
       return;
     }
@@ -94,7 +92,7 @@ const UsersPage = () => {
 
       setShowModal(false);
       setEditingUser(null);
-      setFormData({ nombre: '', usuario: '', rol: 'staff', puntoTrabajo: '' });
+      setFormData({ nombre: '', usuario: '', roles: ['staff'], puntoTrabajo: '' });
       fetchUsers();
     } catch (error) {
       console.error('Error saving user:', error);
@@ -107,11 +105,21 @@ const UsersPage = () => {
     setFormData({
       nombre: userToEdit.nombre,
       usuario: userToEdit.usuario,
-      rol: userToEdit.rol,
+      roles: getRoles(userToEdit),
       puntoTrabajo: userToEdit.puntoTrabajo || ''
     });
     setShowModal(true);
     fetchPuntosVenta(); // Refrescar puntos de venta al editar
+  };
+
+  // Marca/desmarca un rol en el formulario sin perder los demás ya elegidos
+  const toggleRol = (rol) => {
+    setFormData(prev => ({
+      ...prev,
+      roles: prev.roles.includes(rol)
+        ? prev.roles.filter(r => r !== rol)
+        : [...prev.roles, rol]
+    }));
   };
 
   const handleToggleActivo = async (userId, userName, activar) => {
@@ -177,12 +185,12 @@ const UsersPage = () => {
   };
 
   const resetForm = () => {
-    setFormData({ nombre: '', usuario: '', rol: 'staff', puntoTrabajo: '' });
+    setFormData({ nombre: '', usuario: '', roles: ['staff'], puntoTrabajo: '' });
     setEditingUser(null);
     setShowModal(false);
   };
 
-  if (user?.rol !== 'jefe') {
+  if (!hasRole(user, 'jefe')) {
     return (
       <div className="container-fluid">
         <div className="alert alert-warning">
@@ -238,9 +246,13 @@ const UsersPage = () => {
                           <td>{userItem.nombre}</td>
                           <td>{userItem.usuario}</td>
                           <td>
-                            <span className={`table-tag table-tag-${ROLE_INFO[userItem.rol] ? userItem.rol : 'default'}`}>
-                              {(ROLE_INFO[userItem.rol] || {}).label || userItem.rol}
-                            </span>
+                            <div className="d-flex flex-wrap gap-1">
+                              {getRoles(userItem).map(r => (
+                                <span key={r} className={`table-tag table-tag-${ROLE_INFO[r] ? r : 'default'}`}>
+                                  {(ROLE_INFO[r] || {}).label || r}
+                                </span>
+                              ))}
+                            </div>
                           </td>
                           <td>{userItem.puntoTrabajo || '-'}</td>
                           <td>
@@ -339,28 +351,33 @@ const UsersPage = () => {
                       )}
 
                       <div className="mb-3">
-                        <label className="form-label">Rol *</label>
-                        <select
-                          className="form-select"
-                          value={formData.rol}
-                          onChange={(e) => setFormData({...formData, rol: e.target.value})}
-                          disabled={editingUser && editingUser._id === user._id}
-                          required
-                        >
-                          <option value="staff">Staff</option>
-                          <option value="impresor_solo">Impresor (canjea e imprime él mismo)</option>
-                          <option value="impresor_cola">Impresor (recibe cola de solicitudes)</option>
-                          <option value="importador">Importador (sube el CSV del evento)</option>
-                          <option value="jefe">Jefe (administrador)</option>
-                        </select>
+                        <label className="form-label">Rol(es) *</label>
+                        <div className="form-text text-muted mb-1">
+                          Un usuario puede tener más de un rol a la vez.
+                        </div>
+                        {ROLES.map(rol => (
+                          <div className="form-check" key={rol}>
+                            <input
+                              type="checkbox"
+                              className="form-check-input"
+                              id={`rol-${rol}`}
+                              checked={formData.roles.includes(rol)}
+                              onChange={() => toggleRol(rol)}
+                              disabled={editingUser && editingUser._id === user._id}
+                            />
+                            <label className="form-check-label" htmlFor={`rol-${rol}`}>
+                              {ROLE_INFO[rol]?.label || rol}
+                            </label>
+                          </div>
+                        ))}
                         {editingUser && editingUser._id === user._id && (
                           <small className="form-text text-muted">
-                            No podés cambiar tu propio rol.
+                            No podés cambiar tus propios roles.
                           </small>
                         )}
                       </div>
 
-                      {formData.rol !== 'jefe' && formData.rol !== 'importador' && (
+                      {necesitaPuntoTrabajo(formData.roles) && (
                         <div className="mb-3">
                           <div className="d-flex justify-content-between align-items-center">
                             <label className="form-label">Punto de Trabajo *</label>
@@ -399,12 +416,12 @@ const UsersPage = () => {
                               No hay puntos de venta disponibles. Debe crear algunos primero en la sección "Puntos de Venta".
                             </small>
                           )}
-                          {puntosVenta.length > 0 && formData.rol === 'impresor_cola' && (
+                          {puntosVenta.length > 0 && formData.roles.includes('impresor_cola') && (
                             <small className="form-text text-muted">
                               La cola de impresión es compartida entre todos los puntos de venta; este punto es solo informativo.
                             </small>
                           )}
-                          {puntosVenta.length > 0 && formData.rol !== 'impresor_cola' && (
+                          {puntosVenta.length > 0 && formData.roles.some(r => !['impresor_cola', 'jefe', 'importador'].includes(r)) && (
                             <small className="form-text text-muted">
                               Solo podrá ver tickets de las localidades asociadas a este punto de venta.
                             </small>

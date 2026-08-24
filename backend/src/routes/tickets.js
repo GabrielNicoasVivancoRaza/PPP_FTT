@@ -20,7 +20,14 @@ const {
   bulkCanjeTickets,
   bulkMarcarInformacion
 } = require('../controllers/ticketController');
-const { importCsv, getTicketsEliminados, crearTicketManual } = require('../controllers/importController');
+const {
+  importCsv,
+  getTicketsEliminados,
+  crearTicketManual,
+  listarTicketsManuales,
+  editarTicketManual,
+  eliminarTicketManual
+} = require('../controllers/importController');
 
 // Multer en memoria: el CSV se procesa al vuelo, nunca se guarda en disco
 const uploadCsv = multer({
@@ -87,6 +94,15 @@ router.get('/eliminados', auth, authorize('jefe', 'importador'), getTicketsElimi
 
 // @route   POST /api/tickets/manual (alta manual, queda como canjeado)
 router.post('/manual', auth, authorize('jefe', 'importador'), crearTicketManual);
+
+// @route   GET /api/tickets/manual (listar tickets agregados a mano)
+router.get('/manual', auth, authorize('jefe', 'importador'), listarTicketsManuales);
+
+// @route   PUT /api/tickets/manual/:id (editar un ticket agregado a mano)
+router.put('/manual/:id', auth, authorize('jefe', 'importador'), editarTicketManual);
+
+// @route   DELETE /api/tickets/manual/:id (eliminar un ticket agregado a mano)
+router.delete('/manual/:id', auth, authorize('jefe', 'importador'), eliminarTicketManual);
 
 // @route   POST /api/tickets/:id/fraude (solo jefe)
 router.post('/:id/fraude', auth, authorize('jefe'), marcarFraude);

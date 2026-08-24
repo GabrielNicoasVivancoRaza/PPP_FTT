@@ -2,19 +2,19 @@ import React, { useState, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { ticketService } from '../services';
 import Swal from 'sweetalert2';
+import { hasAnyRole } from '../utils/roles';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
 const ROLES_PERMITIDOS = ['jefe', 'importador'];
 
 const ImportCsvPage = () => {
   const { user } = useAuth();
-  const userRole = user?.role || user?.rol;
   const [archivo, setArchivo] = useState(null);
   const [subiendo, setSubiendo] = useState(false);
   const [ultimoResultado, setUltimoResultado] = useState(null);
   const inputRef = useRef(null);
 
-  if (!ROLES_PERMITIDOS.includes(userRole)) {
+  if (!hasAnyRole(user, ROLES_PERMITIDOS)) {
     return (
       <div className="container-fluid">
         <div className="alert alert-warning">No tiene permisos para acceder a esta página.</div>

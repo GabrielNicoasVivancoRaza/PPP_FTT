@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { hasAnyRole } = require('../utils/roles');
 
 const auth = async (req, res, next) => {
   try {
@@ -45,7 +46,9 @@ const authorize = (...roles) => {
     // Aplanar el array de roles en caso de que sea un array anidado
     const flatRoles = roles.flat();
 
-    if (!flatRoles.includes(req.user.rol)) {
+    // Un usuario puede tener más de un rol: alcanza con que UNO de los
+    // suyos esté en la lista permitida para esta ruta.
+    if (!hasAnyRole(req.user, flatRoles)) {
       return res.status(403).json({ 
         success: false, 
         message: 'No tiene permisos para realizar esta acción' 

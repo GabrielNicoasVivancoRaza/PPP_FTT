@@ -7,6 +7,7 @@ const { propagateCanjeToTransaction } = require('../utils/canjeHelpers');
 const { isValidPhone, isValidName, isValidCedula } = require('../utils/validators');
 const { construirFilasTickets, filasACsv } = require('../utils/exportHelpers');
 const { buildGeneralSearchFilter } = require('../utils/searchHelpers');
+const { hasRole, hasAnyRole } = require('../utils/roles');
 
 // Resuelve el color configurado para un tipo de ticket (campo "Ticket")
 const resolveColor = (ticketColors, tipo) => {
@@ -60,9 +61,9 @@ const getTickets = async (req, res) => {
     }
 
     // Filtro por punto de trabajo (para staff / impresor_solo)
-    if ((req.user.rol === 'staff' || req.user.rol === 'impresor_solo') && req.user.puntoTrabajo) {
+    if (hasAnyRole(req.user, ['staff', 'impresor_solo']) && req.user.puntoTrabajo) {
       query.puntoTrabajo = req.user.puntoTrabajo;
-    } else if (puntoTrabajo && req.user.rol === 'jefe') {
+    } else if (puntoTrabajo && hasRole(req.user, 'jefe')) {
       query.puntoTrabajo = puntoTrabajo;
     }
 
@@ -162,7 +163,7 @@ const printTicket = async (req, res) => {
     }
 
     // Solo jefe puede reimprimir tickets ya impresos
-    if (ticket.impreso && req.user.rol !== 'jefe') {
+    if (ticket.impreso && !hasRole(req.user, 'jefe')) {
       return res.status(400).json({
         success: false,
         message: 'Este ticket ya fue impreso'
@@ -900,7 +901,7 @@ const canjeTicket = async (req, res) => {
 
     // Rol impresor_solo: canjea e imprime en una sola acción
     const printerSettings = await PrinterSettings.getSettings();
-    if (printerSettings.enabled && req.user.rol === 'impresor_solo') {
+    if (printerSettings.enabled && hasRole(req.user, 'impresor_solo')) {
       ticket.impreso = true;
       ticket.fechaImpresion = new Date();
     }
@@ -937,7 +938,7 @@ const canjeTicket = async (req, res) => {
     // Rol impresor_solo: propagar impresión a TODOS los tickets de la misma
     // transacción y tipo (la impresión en SquadUp es por transacción, no
     // por ticket individual), hayan sido canjeados o no todavía
-    if (printerSettings.enabled && req.user.rol === 'impresor_solo') {
+    if (printerSettings.enabled && hasRole(req.user, 'impresor_solo')) {
       const afectados = await markTransactionPrinted(TicketModel, ticket['Transaction ID'], ticket['Ticket'], req.user.puntoTrabajo);
       ticketsImpresosTransaccion = afectados.length;
       const otros = afectados.filter(t => t['Ticket ID'] !== ticket['Ticket ID']);
@@ -947,7 +948,7 @@ const canjeTicket = async (req, res) => {
     // Rol staff: encolar solicitud de impresión para impresor_cola con TODOS
     // los tickets de la transacción + tipo (no solo el que se acaba de
     // canjear), ya que se imprimen todos juntos
-    if (printerSettings.enabled && req.user.rol === 'staff') {
+    if (printerSettings.enabled && hasRole(req.user, 'staff')) {
       const tipo = ticket['Ticket'];
       const ticketIdsTransaccion = await getUnprintedTransactionTicketIds(TicketModel, ticket['Transaction ID'], tipo);
       // Si no queda nada por imprimir (p. ej. otro impresor ya imprimió toda
@@ -1142,7 +1143,7 @@ const bulkCanjeTickets = async (req, res) => {
 
     // Rol impresor_solo: canjea e imprime en una sola acción
     const printerSettings = await PrinterSettings.getSettings();
-    if (printerSettings.enabled && req.user.rol === 'impresor_solo') {
+    if (printerSettings.enabled && hasRole(req.user, 'impresor_solo')) {
       updateData.impreso = true;
       updateData.fechaImpresion = new Date();
     }
@@ -1179,7 +1180,7 @@ const bulkCanjeTickets = async (req, res) => {
         auditDetails.quienOtro = quienOtro;
       }
 
-      if (printerSettings.enabled && req.user.rol === 'impresor_solo') {
+      if (printerSettings.enabled && hasRole(req.user, 'impresor_solo')) {
         auditDetails.impreso = true;
       }
 
@@ -1234,7 +1235,7 @@ const bulkCanjeTickets = async (req, res) => {
     // Rol impresor_solo: propagar impresión a TODOS los tickets de la misma
     // transacción y tipo (hayan sido canjeados o no), ya que la impresión en
     // SquadUp es por transacción, no por ticket individual
-    if (printerSettings.enabled && req.user.rol === 'impresor_solo') {
+    if (printerSettings.enabled && hasRole(req.user, 'impresor_solo')) {
       const paresUnicos = new Map();
       ticketsToRedeem.forEach(ticket => {
         const key = `${ticket['Transaction ID']}||${ticket['Ticket']}`;
@@ -1252,7 +1253,7 @@ const bulkCanjeTickets = async (req, res) => {
     // Rol staff: encolar solicitudes de impresión (una por transacción + tipo)
     // con TODOS los tickets de esa transacción/tipo, no solo los canjeados
     // en este lote, ya que se imprimen todos juntos
-    if (printerSettings.enabled && req.user.rol === 'staff') {
+    if (printerSettings.enabled && hasRole(req.user, 'staff')) {
       const paresUnicos = new Map();
       ticketsToRedeem.forEach(ticket => {
         const key = `${ticket['Transaction ID']}||${ticket['Ticket']}`;

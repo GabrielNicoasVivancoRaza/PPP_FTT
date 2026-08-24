@@ -7,6 +7,7 @@ import socketService from '../services/socket';
 import { BrowserMultiFormatReader } from '@zxing/browser';
 import QRCode from 'qrcode';
 import Swal from 'sweetalert2';
+import { hasRole, hasAnyRole } from '../utils/roles';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
 const ROLES_PERMITIDOS = ['jefe', 'staff', 'impresor_solo', 'impresor_cola'];
@@ -77,7 +78,9 @@ const ScanTicketPage = () => {
   const [searchParams] = useSearchParams();
   const sesionUrl = searchParams.get('sesion');
   const esModoCelular = !!sesionUrl;
-  const userRole = user?.role || user?.rol;
+  // impresor_cola es el único rol con un comportamiento especial acá (no
+  // canjea, solo muestra info); si además tiene otro rol, igual cuenta.
+  const esImpresorCola = hasRole(user, 'impresor_cola');
 
   // La sesión de emparejamiento vive en el contexto (persiste entre páginas
   // y recargas), así el celular se vincula UNA sola vez y sirve para todos
@@ -125,7 +128,7 @@ const ScanTicketPage = () => {
       if (response.data.success) {
         const { ticket, transactionCount } = response.data;
 
-        if (userRole === 'impresor_cola') {
+        if (esImpresorCola) {
           // impresor_cola no canjea: solo mostramos la info, seguimos escaneando
           setResultado({ ticket, transactionCount });
         } else {
@@ -143,7 +146,7 @@ const ScanTicketPage = () => {
     } finally {
       setBuscando(false);
     }
-  }, [userRole, navigate, stopScanning]);
+  }, [esImpresorCola, navigate, stopScanning]);
 
   // --- Cámara local: usada tanto por la computadora (modo directo) como por el celular (modo remoto) ---
   const iniciarCamara = useCallback((onCodigoDetectado) => {
@@ -285,7 +288,7 @@ const ScanTicketPage = () => {
     return <Navigate to="/login" replace />;
   }
 
-  if (!ROLES_PERMITIDOS.includes(userRole)) {
+  if (!hasAnyRole(user, ROLES_PERMITIDOS)) {
     return <Navigate to="/unauthorized" replace />;
   }
 
@@ -390,7 +393,7 @@ const ScanTicketPage = () => {
       )}
 
       {/* Vista de resultado para impresor_cola: no canjea, solo consulta */}
-      {resultado && userRole === 'impresor_cola' && (
+      {resultado && esImpresorCola && (
         <div className="card mt-4">
           <div className="card-header d-flex justify-content-between align-items-center">
             <strong>Resultado del último escaneo</strong>

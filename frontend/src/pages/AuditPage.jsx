@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
+import { ROLE_INFO, hasRole, getRoles } from '../utils/roles';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
 const AuditPage = () => {
@@ -49,16 +50,8 @@ const AuditPage = () => {
     cambio_password: 'Cambio Contraseña'
   };
 
-  const ROLE_INFO = {
-    jefe: { label: 'Jefe', className: 'role-badge-jefe' },
-    staff: { label: 'Staff', className: 'role-badge-staff' },
-    impresor_solo: { label: 'Impresor', className: 'role-badge-impresor_solo' },
-    impresor_cola: { label: 'Impresor (Cola)', className: 'role-badge-impresor_cola' },
-    importador: { label: 'Importador', className: 'role-badge-importador' }
-  };
-
   useEffect(() => {
-    if (user?.rol === 'jefe') {
+    if (hasRole(user, 'jefe')) {
       fetchLogs();
     }
   }, [user, pagination.page, filters]);
@@ -143,7 +136,7 @@ const AuditPage = () => {
     return detalles.join(', ') || '-';
   };
 
-  if (user?.rol !== 'jefe') {
+  if (!hasRole(user, 'jefe')) {
     return (
       <div className="container-fluid">
         <div className="alert alert-warning">
@@ -274,10 +267,14 @@ const AuditPage = () => {
                             </td>
                             <td>{log.usuario?.nombre || '-'}</td>
                             <td>
-                              {log.usuario?.rol ? (
-                                <span className={`table-tag table-tag-${ROLE_INFO[log.usuario.rol] ? log.usuario.rol : 'default'}`}>
-                                  {(ROLE_INFO[log.usuario.rol] || {}).label || log.usuario.rol}
-                                </span>
+                              {getRoles(log.usuario).length > 0 ? (
+                                <div className="d-flex flex-wrap gap-1">
+                                  {getRoles(log.usuario).map(r => (
+                                    <span key={r} className={`table-tag table-tag-${ROLE_INFO[r] ? r : 'default'}`}>
+                                      {(ROLE_INFO[r] || {}).label || r}
+                                    </span>
+                                  ))}
+                                </div>
                               ) : '-'}
                             </td>
                             <td>{log.puntoTrabajo || '-'}</td>

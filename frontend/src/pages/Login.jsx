@@ -52,16 +52,9 @@ const Login = () => {
         });
         navigate('/change-password');
       } else {
-        // Redireccionar según el rol del usuario
-        const userRole = response.user.role || response.user.rol;
-        
-        if (userRole === 'jefe') {
-          navigate('/dashboard', { replace: true });
-        } else if (userRole === 'staff') {
-          navigate('/tickets', { replace: true });
-        } else {
-          navigate('/', { replace: true }); // Fallback a redirección inteligente
-        }
+        // La redirección según el/los rol(es) del usuario la resuelve
+        // RoleBasedRedirect (soporta que tenga más de un rol a la vez)
+        navigate('/', { replace: true });
       }
     } catch (error) {
       setError(error.response?.data?.message || 'Error al iniciar sesión');

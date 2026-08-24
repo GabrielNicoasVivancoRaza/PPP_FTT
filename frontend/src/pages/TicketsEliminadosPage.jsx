@@ -3,13 +3,13 @@ import { useAuth } from '../context/AuthContext';
 import { ticketService } from '../services';
 import { getCedula, getLast4 } from '../utils/ticketFields';
 import socketService from '../services/socket';
+import { hasAnyRole } from '../utils/roles';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
 const ROLES_PERMITIDOS = ['jefe', 'importador'];
 
 const TicketsEliminadosPage = () => {
   const { user, token } = useAuth();
-  const userRole = user?.role || user?.rol;
 
   const [tickets, setTickets] = useState([]);
   const [resumen, setResumen] = useState({ total: 0, yaCanjeados: 0, sinCanjear: 0 });
@@ -45,7 +45,7 @@ const TicketsEliminadosPage = () => {
     return () => socketService.off('tickets-eliminados-detectados', onEliminados);
   }, [token, fetchEliminados]);
 
-  if (!ROLES_PERMITIDOS.includes(userRole)) {
+  if (!hasAnyRole(user, ROLES_PERMITIDOS)) {
     return (
       <div className="container-fluid">
         <div className="alert alert-warning">No tiene permisos para acceder a esta página.</div>

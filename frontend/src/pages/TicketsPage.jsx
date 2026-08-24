@@ -7,6 +7,7 @@ import { printerSettingsService, ticketService } from '../services';
 import { useScanSession } from '../context/ScanSessionContext';
 import { getCedula, getLast4 } from '../utils/ticketFields';
 import { onlyDigits, onlyLetters, onlyAlphanumeric, isValidPhone, isValidName, isValidCedula } from '../utils/validators';
+import { hasRole, hasAnyRole, getRoles } from '../utils/roles';
 import Swal from 'sweetalert2';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
@@ -80,8 +81,8 @@ const TicketsPage = () => {
   // Estado para colección activa
   const [activeCollection, setActiveCollection] = useState(null);
 
-  // Determinar si el usuario es jefe
-  const isJefe = user?.role === 'jefe' || user?.rol === 'jefe';
+  // Determinar si el usuario es jefe (puede tener otros roles además)
+  const isJefe = hasRole(user, 'jefe');
 
   // Cargar (y mantener en tiempo real) si la función de impresión está activa,
   // para decidir si un ticket canjeado se muestra en amarillo (pendiente de
@@ -716,7 +717,7 @@ const TicketsPage = () => {
   const handlePrintSubmit = async (e) => {
     e.preventDefault();
     
-    const userRole = user?.role || user?.rol;
+    const roles = getRoles(user);
     
     // Validaciones del frontend
     if (!printForm.quienRetira) {
@@ -761,12 +762,12 @@ const TicketsPage = () => {
 
     // Rol impresor_solo: abrir SquadUp de forma síncrona (dentro del gesto del
     // usuario) para evitar que el navegador bloquee la ventana emergente.
-    if (userRole === 'impresor_solo' && selectedTicket?.['Transaction ID']) {
+    if (roles.includes('impresor_solo') && selectedTicket?.['Transaction ID']) {
       window.open(`${SQUADUP_PRINT_URL}${selectedTicket['Transaction ID']}`, '_blank');
     }
 
     try {
-      if (userRole === 'staff' || userRole === 'jefe' || userRole === 'impresor_solo') {
+      if (roles.includes('staff') || roles.includes('jefe') || roles.includes('impresor_solo')) {
         // Preparar datos del canje
         const canjeData = {
           quienRetira: printForm.quienRetira,
@@ -788,7 +789,7 @@ const TicketsPage = () => {
         const adicionales = canjeResponse.data?.data?.ticketsTransaccion || 0;
 
         Swal.fire({
-          title: userRole === 'impresor_solo' ? 'Canjeado e impreso' : 'Canje realizado',
+          title: roles.includes('impresor_solo') ? 'Canjeado e impreso' : 'Canje realizado',
           text: adicionales > 0
             ? `Se completó la misma información en ${adicionales} ticket(s) más de la transacción`
             : undefined,
@@ -857,7 +858,7 @@ const TicketsPage = () => {
   };
 
   const canPrint = (ticket) => {
-    const userRole = user?.role || user?.rol;
+    const roles = getRoles(user);
 
     // Si el ticket ya fue canjeado, no se puede volver a canjear
     if (ticket.canjeado) return false;
@@ -866,7 +867,7 @@ const TicketsPage = () => {
     if (ticket.fraude || ticket.eliminado) return false;
 
     // Jefe, staff e impresor_solo pueden canjear (impresor_solo además imprime al canjear)
-    return userRole === 'jefe' || userRole === 'staff' || userRole === 'impresor_solo';
+    return roles.includes('jefe') || roles.includes('staff') || roles.includes('impresor_solo');
   };
 
   // Funciones para selección múltiple (solo admin/jefe)
@@ -999,11 +1000,11 @@ const TicketsPage = () => {
       }
     }
 
-    const userRole = user?.role || user?.rol;
+    const roles = getRoles(user);
 
     // Rol impresor_solo: abrir SquadUp de forma síncrona con todas las
     // Transaction ID involucradas (unidas por coma) antes de esperar al API.
-    if (userRole === 'impresor_solo') {
+    if (roles.includes('impresor_solo')) {
       const transactionIds = [...new Set(
         tickets
           .filter(t => selectedTickets.has(t['Ticket ID']))
@@ -1035,7 +1036,7 @@ const TicketsPage = () => {
 
       if (response.data.success) {
         const { updated, alreadyRedeemed, ticketsPropagados } = response.data.data;
-        let texto = userRole === 'impresor_solo'
+        let texto = roles.includes('impresor_solo')
           ? `${updated} tickets canjeados e impresos`
           : `${updated} tickets canjeados`;
         if (ticketsPropagados > 0) {
@@ -1160,18 +1161,18 @@ const TicketsPage = () => {
   };
 
   const getPrintButtonText = (ticket) => {
-    const userRole = user?.role || user?.rol;
+    const roles = getRoles(user);
 
     // Si ya está canjeado, mostrar estado canjeado
     if (ticket.canjeado) {
       return 'Canjeado';
     }
 
-    if (userRole === 'jefe' || userRole === 'staff') {
+    if (roles.includes('jefe') || roles.includes('staff')) {
       return 'Realizar Canje';
     }
 
-    if (userRole === 'impresor_solo') {
+    if (roles.includes('impresor_solo')) {
       return 'Canjear e Imprimir';
     }
 
@@ -1773,9 +1774,9 @@ const TicketsPage = () => {
                                         <button
                                           className="btn btn-warning btn-sm me-1"
                                           onClick={async () => {
-                                            const userRole = user?.role || user?.rol;
+                                            const roles = getRoles(user);
 
-                                            if (userRole === 'staff') {
+                                            if (roles.includes('staff')) {
                                               // Staff usa el modal para reimpresiones también
                                               handleSendToPrint(ticket);
                                             } else {
@@ -1920,7 +1921,7 @@ const TicketsPage = () => {
                 <div className="modal-content">
                   <div className="modal-header">
                     <h5 className="modal-title">
-                      {(['staff', 'impresor_solo'].includes(user?.role || user?.rol)) ? 'Realizar Canje' : 'Canje de Ticket'}
+                      {hasAnyRole(user, ['staff', 'impresor_solo']) ? 'Realizar Canje' : 'Canje de Ticket'}
                     </h5>
                     <button
                       type="button"
@@ -2092,7 +2093,7 @@ const TicketsPage = () => {
                         Cancelar
                       </button>
                       <button type="submit" className="btn btn-primary">
-                        {(['staff', 'impresor_solo'].includes(user?.role || user?.rol)) ? 'Realizar Canje' : 'Canje'}
+                        {hasAnyRole(user, ['staff', 'impresor_solo']) ? 'Realizar Canje' : 'Canje'}
                       </button>
                     </div>
                   </form>
@@ -2125,7 +2126,7 @@ const TicketsPage = () => {
                         Todos recibirán la misma información de canje. Si alguno de estos tickets comparte
                         Transaction ID con otro ticket no seleccionado, esa información también se completará
                         automáticamente en el ticket faltante.
-                        {(user?.role === 'impresor_solo' || user?.rol === 'impresor_solo') && (
+                        {hasRole(user, 'impresor_solo') && (
                           <> También se enviarán a imprimir juntos (impresión masiva).</>
                         )}
                       </div>

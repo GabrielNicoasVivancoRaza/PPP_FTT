@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { printRequestService } from '../services';
 import socketService from '../services/socket';
+import { hasAnyRole } from '../utils/roles';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
 const ImpresosPage = () => {
@@ -43,7 +44,7 @@ const ImpresosPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, fetchImpresos]);
 
-  if (user?.rol !== 'impresor_cola' && user?.rol !== 'jefe') {
+  if (!hasAnyRole(user, ['impresor_cola', 'jefe'])) {
     return (
       <div className="container-fluid">
         <div className="alert alert-warning">No tiene permisos para acceder a esta página.</div>

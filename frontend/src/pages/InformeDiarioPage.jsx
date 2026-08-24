@@ -2,9 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { ticketService } from '../services';
 import Swal from 'sweetalert2';
+import { hasRole } from '../utils/roles';
 import 'bootstrap/dist/css/bootstrap.min.css';
-
-const ROLES_PERMITIDOS = ['jefe'];
 
 const hoyISO = () => new Date().toISOString().slice(0, 10);
 
@@ -53,7 +52,6 @@ const TablaLocalidades = ({ filas, tituloColumnaPorcentaje }) => {
 
 const InformeDiarioPage = () => {
   const { user } = useAuth();
-  const userRole = user?.role || user?.rol;
 
   const [fecha, setFecha] = useState(hoyISO());
   const [reporte, setReporte] = useState(null);
@@ -100,7 +98,7 @@ const InformeDiarioPage = () => {
     }
   };
 
-  if (!ROLES_PERMITIDOS.includes(userRole)) {
+  if (!hasRole(user, 'jefe')) {
     return (
       <div className="container-fluid">
         <div className="alert alert-warning">No tiene permisos para acceder a esta página.</div>
