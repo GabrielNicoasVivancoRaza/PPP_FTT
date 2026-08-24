@@ -344,7 +344,7 @@ const UsersPage = () => {
                           className="form-select"
                           value={formData.rol}
                           onChange={(e) => setFormData({...formData, rol: e.target.value})}
-                          disabled={editingUser}
+                          disabled={editingUser && editingUser._id === user._id}
                           required
                         >
                           <option value="staff">Staff</option>
@@ -352,6 +352,11 @@ const UsersPage = () => {
                           <option value="impresor_cola">Impresor (recibe cola de solicitudes)</option>
                           <option value="importador">Importador (sube el CSV del evento)</option>
                         </select>
+                        {editingUser && editingUser._id === user._id && (
+                          <small className="form-text text-muted">
+                            No podés cambiar tu propio rol.
+                          </small>
+                        )}
                       </div>
 
                       {formData.rol !== 'jefe' && formData.rol !== 'importador' && (

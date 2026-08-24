@@ -882,17 +882,29 @@ const TicketsPage = () => {
     });
   };
 
+  // Selecciona/deselecciona SOLO los tickets de la página actual, sin tocar
+  // los que ya estaban marcados en otras páginas: antes esto reemplazaba
+  // todo el Set global por el de la página actual, así que al paginar se
+  // perdía lo ya seleccionado (y el checkbox de "seleccionar todos" quedaba
+  // marcado en la página siguiente por comparar tamaños en vez de contenido).
+  const idsPaginaActual = tickets.map(t => t['Ticket ID']);
+  const todosPaginaActualSeleccionados = idsPaginaActual.length > 0 &&
+    idsPaginaActual.every(id => selectedTickets.has(id));
+  const algunoPaginaActualSeleccionado = idsPaginaActual.some(id => selectedTickets.has(id));
+
   const handleSelectAll = () => {
-    if (selectedTickets.size === tickets.length) {
-      // Si todos están seleccionados, deseleccionar todos
-      setSelectedTickets(new Set());
-    } else {
-      // Seleccionar todos los tickets de la página actual (canjeados o no:
-      // el canje masivo ya filtra los ya canjeados por su cuenta, y colocar
-      // información no depende del estado de canje)
-      setSelectedTickets(new Set(tickets.map(t => t['Ticket ID'])));
-    }
+    setSelectedTickets(prev => {
+      const newSet = new Set(prev);
+      if (todosPaginaActualSeleccionados) {
+        idsPaginaActual.forEach(id => newSet.delete(id));
+      } else {
+        idsPaginaActual.forEach(id => newSet.add(id));
+      }
+      return newSet;
+    });
   };
+
+  const handleClearSelection = () => setSelectedTickets(new Set());
 
   const handleBulkCanje = () => {
     if (selectedTickets.size === 0) {
@@ -1338,6 +1350,19 @@ const TicketsPage = () => {
                   Colocar Información ({selectedTickets.size})
                 </button>
               )}
+
+              {/* Limpiar selección: la selección se mantiene al cambiar de
+                  página, así que hace falta una forma explícita de vaciarla */}
+              {selectedTickets.size > 0 && (
+                <button
+                  className="btn btn-outline-danger btn-sm"
+                  onClick={handleClearSelection}
+                  style={{fontSize: '0.8em'}}
+                >
+                  <i className="fas fa-times me-1"></i>
+                  Cancelar Seleccionados
+                </button>
+              )}
             </div>
           </div>
 
@@ -1607,8 +1632,11 @@ const TicketsPage = () => {
                                 type="checkbox"
                                 className="form-check-input"
                                 onChange={handleSelectAll}
-                                checked={selectedTickets.size > 0 && selectedTickets.size === tickets.length}
-                                title="Seleccionar todos"
+                                checked={todosPaginaActualSeleccionados}
+                                ref={el => {
+                                  if (el) el.indeterminate = algunoPaginaActualSeleccionado && !todosPaginaActualSeleccionados;
+                                }}
+                                title="Seleccionar todos (de esta página)"
                               />
                             </th>
                             <th>Nombre</th>

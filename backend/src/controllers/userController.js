@@ -96,9 +96,11 @@ const getUsers = async (req, res) => {
 // @desc    Actualizar usuario
 // @route   PUT /api/users/:id
 // @access  Private (solo jefe)
+const ROLES_VALIDOS = User.schema.path('rol').enumValues;
+
 const updateUser = async (req, res) => {
   try {
-    const { nombre, puntoTrabajo, activo } = req.body;
+    const { nombre, rol, puntoTrabajo, activo } = req.body;
     const userId = req.params.id;
 
     const user = await User.findById(userId);
@@ -117,6 +119,15 @@ const updateUser = async (req, res) => {
       });
     }
 
+    // No permitir cambiarse el rol a uno mismo: si se equivoca de rol se
+    // queda sin poder administrar usuarios y sin forma de revertirlo
+    if (userId === req.user._id.toString() && rol && rol !== user.rol) {
+      return res.status(400).json({
+        success: false,
+        message: 'No puedes cambiar tu propio rol'
+      });
+    }
+
     if (nombre) {
       if (!isValidName(nombre)) {
         return res.status(400).json({
@@ -126,7 +137,31 @@ const updateUser = async (req, res) => {
       }
       user.nombre = nombre;
     }
-    if (puntoTrabajo && user.rol !== 'jefe') user.puntoTrabajo = puntoTrabajo;
+
+    if (rol) {
+      if (!ROLES_VALIDOS.includes(rol)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Rol inválido'
+        });
+      }
+
+      const requierePuntoTrabajo = rol !== 'jefe' && rol !== 'importador';
+      const puntoTrabajoFinal = requierePuntoTrabajo ? (puntoTrabajo || user.puntoTrabajo) : undefined;
+
+      if (requierePuntoTrabajo && !puntoTrabajoFinal) {
+        return res.status(400).json({
+          success: false,
+          message: 'Punto de trabajo es requerido para este rol'
+        });
+      }
+
+      user.rol = rol;
+      user.puntoTrabajo = puntoTrabajoFinal;
+    } else if (puntoTrabajo && user.rol !== 'jefe' && user.rol !== 'importador') {
+      user.puntoTrabajo = puntoTrabajo;
+    }
+
     if (typeof activo === 'boolean') user.activo = activo;
 
     await user.save();

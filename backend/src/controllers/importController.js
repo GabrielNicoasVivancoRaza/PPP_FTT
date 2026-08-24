@@ -211,6 +211,53 @@ const importCsv = async (req, res) => {
 
     const nuevos = candidatos.filter(d => !existentesSet.has(d['Ticket ID']));
 
+    // --- Aplicar el canje de "Agregar Ticket" a TODOS los boletos de esa
+    // transacción, no solo al primero ---
+    // "Agregar Ticket" crea UN solo ticket manual por transacción (un
+    // boleto), pero la transacción real de SquadUp puede tener más de uno
+    // (varias personas/asientos en la misma compra). Cuando llega el CSV, el
+    // primer boleto real de esa transacción se reconcilia arriba con el
+    // manual (toma su Ticket ID). Los demás boletos reales de la MISMA
+    // transacción no tienen un manual propio con el cual reconciliarse, así
+    // que sin esto entrarían como tickets nuevos sin canjear — perdiendo el
+    // hecho de que esa venta completa ya se atendió en puerta.
+    //
+    // Se buscan los tickets creados a mano (reconciliados o no) de las
+    // transacciones que vienen en este archivo, y su información de canje
+    // se usa como plantilla para los tickets nuevos de esa misma
+    // transacción que no tuvieron con qué reconciliarse.
+    let ticketsCanjeadosPorTransaccionManual = 0;
+    if (nuevos.length > 0) {
+      const transaccionIdsEnArchivo = [...new Set(candidatos.map(d => d['Transaction ID']))];
+      const manualesDeEstasTransacciones = await TicketModel.find({
+        creadoManualmente: true,
+        'Transaction ID': { $in: transaccionIdsEnArchivo }
+      }).lean();
+
+      const canjePorTransaccionManual = new Map();
+      manualesDeEstasTransacciones.forEach(m => {
+        if (!canjePorTransaccionManual.has(m['Transaction ID'])) {
+          canjePorTransaccionManual.set(m['Transaction ID'], {
+            canjeado: true,
+            fechaCanje: m.fechaCanje,
+            usuarioResponsable: m.usuarioResponsable,
+            usuarioCanje: m.usuarioCanje,
+            puntoTrabajo: m.puntoTrabajo,
+            puntoCanje: m.puntoCanje,
+            quienRetira: m.quienRetira
+          });
+        }
+      });
+
+      nuevos.forEach(doc => {
+        const plantilla = canjePorTransaccionManual.get(doc['Transaction ID']);
+        if (plantilla) {
+          Object.assign(doc, plantilla);
+          ticketsCanjeadosPorTransaccionManual++;
+        }
+      });
+    }
+
     let insertados = 0;
     let erroresInsercion = 0;
     // Duplicados detectados por el índice único de "Ticket ID" al insertar.
@@ -321,7 +368,8 @@ const importCsv = async (req, res) => {
       erroresInsercion,
       eliminados: idsDesaparecidos.length,
       eliminadosYaCanjeados: eliminadosTrasCanje.length,
-      cedulasCompletadas
+      cedulasCompletadas,
+      ticketsCanjeadosPorTransaccionManual
     };
 
     try {
@@ -389,6 +437,9 @@ const importCsv = async (req, res) => {
     let message = `${insertados} ticket(s) nuevo(s) agregado(s). ${yaExistian} ya existían y no se modificaron.`;
     if (reconciliaciones.length > 0) {
       message += ` ${reconciliaciones.length} ticket(s) agregado(s) manualmente se completaron con los datos reales del CSV.`;
+    }
+    if (ticketsCanjeadosPorTransaccionManual > 0) {
+      message += ` ${ticketsCanjeadosPorTransaccionManual} ticket(s) adicional(es) de una transacción registrada en "Agregar Ticket" se marcaron como canjeados automáticamente.`;
     }
     if (cedulasCompletadas > 0) {
       message += ` ${cedulasCompletadas} cédula(s) completada(s) automáticamente usando otra fila de la misma Transaction ID.`;
