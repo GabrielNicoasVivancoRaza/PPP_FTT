@@ -28,6 +28,19 @@ const TicketsPage = () => {
   const [searchTimeout, setSearchTimeout] = useState(null);
   const [sortBy, setSortBy] = useState('');
   const [sortOrder, setSortOrder] = useState('asc'); // 'asc' o 'desc'
+
+  // Filtros avanzados (solo jefe): fraude, información, localidad, quién
+  // canjeó y rango de fecha/hora de canje
+  const [showFiltrosAvanzados, setShowFiltrosAvanzados] = useState(false);
+  const [filtroFraude, setFiltroFraude] = useState('');
+  const [filtroInformacion, setFiltroInformacion] = useState('');
+  const [filtroLocalidad, setFiltroLocalidad] = useState('');
+  const [filtroUsuarioCanje, setFiltroUsuarioCanje] = useState('');
+  const [filtroFechaDesde, setFiltroFechaDesde] = useState('');
+  const [filtroFechaHasta, setFiltroFechaHasta] = useState('');
+  const [localidadesFiltro, setLocalidadesFiltro] = useState([]);
+  const [usuariosFiltro, setUsuariosFiltro] = useState([]);
+
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 50,
@@ -288,6 +301,30 @@ const TicketsPage = () => {
     }
   }, [isJefe]);
 
+  // Opciones para los filtros avanzados (localidades y usuarios), solo jefe
+  useEffect(() => {
+    if (!isJefe) return;
+
+    const cargarOpcionesFiltros = async () => {
+      try {
+        const [resLocalidades, resUsuarios] = await Promise.all([
+          api.get('/puntos-venta/localidades/disponibles'),
+          api.get('/users')
+        ]);
+        if (resLocalidades.data.success) {
+          setLocalidadesFiltro(resLocalidades.data.data.localidades || []);
+        }
+        if (resUsuarios.data.success) {
+          setUsuariosFiltro(resUsuarios.data.users || []);
+        }
+      } catch (error) {
+        console.error('Error al cargar opciones de filtros:', error);
+      }
+    };
+
+    cargarOpcionesFiltros();
+  }, [isJefe]);
+
   // Cargar tickets cuando cambia la selección, búsqueda u ordenamiento
   useEffect(() => {
     // No limpiar tickets innecesariamente - solo cargar cuando sea necesario
@@ -341,7 +378,7 @@ const TicketsPage = () => {
         clearTimeout(searchTimeout);
       }
     };
-  }, [search, seatSearch, ticketIdSearch]);
+  }, [search, seatSearch, ticketIdSearch, filtroFraude, filtroInformacion, filtroLocalidad, filtroUsuarioCanje, filtroFechaDesde, filtroFechaHasta]);
 
   // Obtener colección activa
   useEffect(() => {
@@ -474,7 +511,13 @@ const TicketsPage = () => {
         ...(seatSearch.trim() && { seatSearch: seatSearch.trim() }),
         ...(ticketIdSearch.trim() && { ticketIdSearch: ticketIdSearch.trim() }),
         ...(sortBy && { sortBy }),
-        ...(sortBy && { sortOrder })
+        ...(sortBy && { sortOrder }),
+        ...(filtroFraude && { fraude: filtroFraude }),
+        ...(filtroInformacion && { informacion: filtroInformacion }),
+        ...(filtroLocalidad && { localidad: filtroLocalidad }),
+        ...(filtroUsuarioCanje && { usuarioCanje: filtroUsuarioCanje }),
+        ...(filtroFechaDesde && { fechaCanjeDesde: filtroFechaDesde }),
+        ...(filtroFechaHasta && { fechaCanjeHasta: filtroFechaHasta })
       };
 
       const response = await api.get('/tickets', { params });
@@ -1901,6 +1944,112 @@ const TicketsPage = () => {
                   </>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* Filtros avanzados (debajo de la tabla, solo jefe) */}
+          {isJefe && (
+            <div className="card mt-3">
+              <div
+                className="card-header d-flex justify-content-between align-items-center"
+                style={{ cursor: 'pointer' }}
+                onClick={() => setShowFiltrosAvanzados(prev => !prev)}
+              >
+                <strong>
+                  <i className="fas fa-filter me-2"></i>Filtros avanzados
+                </strong>
+                <i className={`fas fa-chevron-${showFiltrosAvanzados ? 'up' : 'down'}`}></i>
+              </div>
+              {showFiltrosAvanzados && (
+                <div className="card-body">
+                  <div className="row g-3">
+                    <div className="col-md-3">
+                      <label className="form-label small text-muted">Fraude</label>
+                      <select
+                        className="form-select form-select-sm"
+                        value={filtroFraude}
+                        onChange={(e) => setFiltroFraude(e.target.value)}
+                      >
+                        <option value="">Todos</option>
+                        <option value="true">Marcados como fraude</option>
+                        <option value="false">Sin marcar</option>
+                      </select>
+                    </div>
+                    <div className="col-md-3">
+                      <label className="form-label small text-muted">Información</label>
+                      <select
+                        className="form-select form-select-sm"
+                        value={filtroInformacion}
+                        onChange={(e) => setFiltroInformacion(e.target.value)}
+                      >
+                        <option value="">Todos</option>
+                        <option value="true">Con información colocada</option>
+                        <option value="false">Sin información</option>
+                      </select>
+                    </div>
+                    <div className="col-md-3">
+                      <label className="form-label small text-muted">Localidad</label>
+                      <select
+                        className="form-select form-select-sm"
+                        value={filtroLocalidad}
+                        onChange={(e) => setFiltroLocalidad(e.target.value)}
+                      >
+                        <option value="">Todas</option>
+                        {localidadesFiltro.map(loc => (
+                          <option key={loc} value={loc}>{loc}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="col-md-3">
+                      <label className="form-label small text-muted">Usuario que canjeó</label>
+                      <select
+                        className="form-select form-select-sm"
+                        value={filtroUsuarioCanje}
+                        onChange={(e) => setFiltroUsuarioCanje(e.target.value)}
+                      >
+                        <option value="">Todos</option>
+                        {usuariosFiltro.map(u => (
+                          <option key={u._id} value={u._id}>{u.nombre}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="col-md-3">
+                      <label className="form-label small text-muted">Canjeado desde</label>
+                      <input
+                        type="datetime-local"
+                        className="form-control form-control-sm"
+                        value={filtroFechaDesde}
+                        onChange={(e) => setFiltroFechaDesde(e.target.value)}
+                      />
+                    </div>
+                    <div className="col-md-3">
+                      <label className="form-label small text-muted">Canjeado hasta</label>
+                      <input
+                        type="datetime-local"
+                        className="form-control form-control-sm"
+                        value={filtroFechaHasta}
+                        onChange={(e) => setFiltroFechaHasta(e.target.value)}
+                      />
+                    </div>
+                    <div className="col-md-3 d-flex align-items-end">
+                      <button
+                        type="button"
+                        className="btn btn-outline-secondary btn-sm w-100"
+                        onClick={() => {
+                          setFiltroFraude('');
+                          setFiltroInformacion('');
+                          setFiltroLocalidad('');
+                          setFiltroUsuarioCanje('');
+                          setFiltroFechaDesde('');
+                          setFiltroFechaHasta('');
+                        }}
+                      >
+                        <i className="fas fa-eraser me-1"></i>Limpiar filtros
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

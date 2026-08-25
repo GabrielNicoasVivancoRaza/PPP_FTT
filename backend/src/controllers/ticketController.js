@@ -20,13 +20,19 @@ const resolveColor = (ticketColors, tipo) => {
 // @access  Private
 const getTickets = async (req, res) => {
   try {
-    const { 
-      search, 
+    const {
+      search,
       seatSearch,
       ticketIdSearch,
-      puntoTrabajo, 
-      impreso, 
-      page = 1, 
+      puntoTrabajo,
+      impreso,
+      fraude,
+      informacion,
+      localidad,
+      usuarioCanje,
+      fechaCanjeDesde,
+      fechaCanjeHasta,
+      page = 1,
       limit = 50,
       sortBy = 'createdAt',
       sortOrder = 'desc'
@@ -34,23 +40,50 @@ const getTickets = async (req, res) => {
 
     const query = {};
     const filters = [];
-    
+
     // Filtro específico por Ticket ID
     if (ticketIdSearch && ticketIdSearch.trim()) {
       // Ticket ID es String en el schema
       filters.push({ 'Ticket ID': ticketIdSearch.trim() });
     }
-    
+
     // Filtro de búsqueda general (nombre, email, cédula, Ticket ID,
     // Transaction ID) — insensible a tildes y con coincidencia parcial
     if (search && search.trim()) {
       filters.push(buildGeneralSearchFilter(search));
     }
-    
+
     // Filtro por asiento
     if (seatSearch && seatSearch.trim()) {
       const seatRegex = new RegExp(seatSearch.trim(), 'i');
       filters.push({ 'Seat': seatRegex });
+    }
+
+    // Filtro: colocada o no la nota de información (jefe)
+    if (informacion !== undefined) {
+      filters.push(
+        informacion === 'true'
+          ? { informacion: { $exists: true, $ne: '' } }
+          : { $or: [{ informacion: { $exists: false } }, { informacion: '' }] }
+      );
+    }
+
+    // Filtro por usuario que realizó el canje (jefe)
+    if (usuarioCanje && usuarioCanje.trim()) {
+      filters.push({
+        $or: [
+          { usuarioCanje: usuarioCanje.trim() },
+          { usuarioResponsable: usuarioCanje.trim() }
+        ]
+      });
+    }
+
+    // Filtro por rango de fecha/hora de canje (jefe)
+    if (fechaCanjeDesde || fechaCanjeHasta) {
+      const rango = {};
+      if (fechaCanjeDesde) rango.$gte = new Date(fechaCanjeDesde);
+      if (fechaCanjeHasta) rango.$lte = new Date(fechaCanjeHasta);
+      filters.push({ fechaCanje: rango });
     }
 
     // Combinar filtros con $and si hay más de uno
@@ -71,6 +104,17 @@ const getTickets = async (req, res) => {
     // tickets importados sin el campo "canjeado" definido en Mongo.
     if (impreso !== undefined) {
       query.canjeado = impreso === 'true' ? true : { $ne: true };
+    }
+
+    // Filtro por localidad (campo "Ticket") — jefe
+    if (localidad && localidad.trim()) {
+      query['Ticket'] = localidad.trim();
+    }
+
+    // Filtro por marca de fraude — jefe. $ne:true para incluir tickets sin
+    // el campo definido (nunca marcados)
+    if (fraude !== undefined) {
+      query.fraude = fraude === 'true' ? true : { $ne: true };
     }
 
     const sort = {};
