@@ -142,8 +142,8 @@ export const ticketService = {
   },
 
   // Tickets agregados a mano desde "Agregar Ticket" (para editar/eliminar)
-  getTicketsManuales: async () => {
-    const response = await api.get('/tickets/manual');
+  getTicketsManuales: async (params = {}) => {
+    const response = await api.get('/tickets/manual', { params });
     return response.data;
   },
 

@@ -193,6 +193,12 @@ const ticketSchema = new mongoose.Schema({
   ticketIdManualOriginal: {
     type: String
   },
+  // Cuántos tickets tenía en total esa Transaction ID en el CSV al momento
+  // de reconciliar (para detectar compras con varios boletos donde solo se
+  // cargó uno a mano)
+  ticketsEnTransaccionAlReconciliar: {
+    type: Number
+  },
   // Control de reimpresiones
   reimpresiones: [{
     fecha: {

@@ -106,6 +106,16 @@ const importCsv = async (req, res) => {
       }
     }
 
+    // Cuántas filas del archivo comparten cada Transaction ID: sirve para
+    // que, al reconciliar un ticket manual, se pueda mostrar "esta compra
+    // tenía N tickets en total" (útil para detectar compras con varios
+    // boletos donde solo se cargó uno a mano)
+    const conteoPorTransaccion = new Map();
+    for (const doc of candidatos) {
+      const transId = doc['Transaction ID'];
+      conteoPorTransaccion.set(transId, (conteoPorTransaccion.get(transId) || 0) + 1);
+    }
+
     // --- Reconciliar con tickets creados a mano ("Agregar Ticket") ---
     // Un ticket manual nace con un Ticket ID sintético (MANUAL-...), no con
     // el real de SquadUp. Si el CSV trae la fila real de esa misma persona
@@ -171,7 +181,8 @@ const importCsv = async (req, res) => {
             'Transaction Date (Local)': candidato['Transaction Date (Local)'],
             reconciliadoConCsv: true,
             fechaReconciliacion: ahoraReconciliacion,
-            ticketIdManualOriginal: manualTicketId
+            ticketIdManualOriginal: manualTicketId,
+            ticketsEnTransaccionAlReconciliar: conteoPorTransaccion.get(candidato['Transaction ID']) || 1
           }
         }
       );
@@ -614,16 +625,28 @@ const crearTicketManual = async (req, res) => {
   }
 };
 
+// Campos por los que se puede ordenar el listado de tickets manuales
+const CAMPOS_ORDEN_MANUALES = {
+  fecha: 'fechaCanje',
+  transactionId: 'Transaction ID'
+};
+
 // @desc    Listar los tickets agregados a mano desde "Agregar Ticket"
-// (reconciliados con el CSV real o no), para poder editarlos/eliminarlos
-// @route   GET /api/tickets/manual
+// (reconciliados con el CSV real o no), para poder editarlos/eliminarlos.
+// Se puede ordenar por fecha o por Transaction ID, ascendente o descendente.
+// @route   GET /api/tickets/manual?sortBy=fecha|transactionId&sortOrder=asc|desc
 // @access  Private (jefe, importador)
 const listarTicketsManuales = async (req, res) => {
   try {
+    const { sortBy = 'fecha', sortOrder = 'desc' } = req.query;
     const TicketModel = req.TicketModel || Ticket;
+
+    const campoOrden = CAMPOS_ORDEN_MANUALES[sortBy] || CAMPOS_ORDEN_MANUALES.fecha;
+    const orden = sortOrder === 'asc' ? 1 : -1;
+
     const tickets = await TicketModel.find({ creadoManualmente: true, eliminado: { $ne: true } })
       .populate('usuarioResponsable', 'nombre usuario')
-      .sort({ createdAt: -1 });
+      .sort({ [campoOrden]: orden });
 
     res.json({ success: true, tickets });
   } catch (error) {

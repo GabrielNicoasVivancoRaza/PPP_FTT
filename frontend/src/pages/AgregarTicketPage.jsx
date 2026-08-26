@@ -30,10 +30,15 @@ const AgregarTicketPage = () => {
   const [cargandoManuales, setCargandoManuales] = useState(true);
   const [editando, setEditando] = useState(null); // Ticket ID en edición, o null si es alta nueva
 
+  // Orden del listado de tickets agregados a mano: por fecha o por
+  // Transaction ID, ascendente o descendente
+  const [sortBy, setSortBy] = useState('fecha');
+  const [sortOrder, setSortOrder] = useState('desc');
+
   const cargarManuales = useCallback(async () => {
     try {
       setCargandoManuales(true);
-      const response = await ticketService.getTicketsManuales();
+      const response = await ticketService.getTicketsManuales({ sortBy, sortOrder });
       if (response.success) {
         setManuales(response.tickets || []);
       }
@@ -42,7 +47,23 @@ const AgregarTicketPage = () => {
     } finally {
       setCargandoManuales(false);
     }
-  }, []);
+  }, [sortBy, sortOrder]);
+
+  const handleSort = (campo) => {
+    if (sortBy === campo) {
+      setSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(campo);
+      setSortOrder('asc');
+    }
+  };
+
+  const getSortIcon = (campo) => {
+    if (sortBy !== campo) return <i className="fas fa-sort text-muted ms-1"></i>;
+    return sortOrder === 'asc'
+      ? <i className="fas fa-sort-up ms-1"></i>
+      : <i className="fas fa-sort-down ms-1"></i>;
+  };
 
   useEffect(() => {
     const cargarLocalidades = async () => {
@@ -59,6 +80,9 @@ const AgregarTicketPage = () => {
       }
     };
     cargarLocalidades();
+  }, []);
+
+  useEffect(() => {
     cargarManuales();
   }, [cargarManuales]);
 
@@ -343,8 +367,21 @@ const AgregarTicketPage = () => {
                     <th>Localidad</th>
                     <th>Cédula</th>
                     <th>Email</th>
-                    <th>Transaction ID</th>
+                    <th
+                      style={{ cursor: 'pointer', userSelect: 'none' }}
+                      onClick={() => handleSort('transactionId')}
+                      title="Ordenar por Transaction ID"
+                    >
+                      Transaction ID {getSortIcon('transactionId')}
+                    </th>
                     <th>Ticket ID</th>
+                    <th
+                      style={{ cursor: 'pointer', userSelect: 'none' }}
+                      onClick={() => handleSort('fecha')}
+                      title="Ordenar por fecha"
+                    >
+                      Fecha {getSortIcon('fecha')}
+                    </th>
                     <th>Estado</th>
                     <th>Acciones</th>
                   </tr>
@@ -359,8 +396,25 @@ const AgregarTicketPage = () => {
                       <td><code>{ticket['Transaction ID']}</code></td>
                       <td><code>{ticket['Ticket ID']}</code></td>
                       <td>
+                        <small>
+                          {ticket.fechaCanje
+                            ? new Date(ticket.fechaCanje).toLocaleString('es-ES', {
+                                year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
+                              })
+                            : '-'}
+                        </small>
+                      </td>
+                      <td>
                         {ticket.reconciliadoConCsv ? (
-                          <span className="table-tag table-tag-active" title="Ya se completó con la fila real del CSV">Reconciliado</span>
+                          <span
+                            className="table-tag table-tag-active"
+                            title="Ya se completó con la fila real del CSV"
+                          >
+                            Reconciliado
+                            {ticket.ticketsEnTransaccionAlReconciliar > 0 && (
+                              ` (${ticket.ticketsEnTransaccionAlReconciliar} ticket(s) en la transacción)`
+                            )}
+                          </span>
                         ) : (
                           <span className="table-tag table-tag-pending">Solo manual</span>
                         )}
