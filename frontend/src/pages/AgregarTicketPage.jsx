@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { ticketService } from '../services';
 import api from '../services/api';
@@ -64,6 +64,25 @@ const AgregarTicketPage = () => {
       ? <i className="fas fa-sort-up ms-1"></i>
       : <i className="fas fa-sort-down ms-1"></i>;
   };
+
+  // Resumen visual: total agregados a mano, cuántos quedaron canjeados
+  // (deberían ser todos, así se confirma de un vistazo) y desglose por
+  // quién los agregó
+  const resumenManuales = useMemo(() => {
+    const total = manuales.length;
+    const canjeados = manuales.filter(t => t.canjeado).length;
+
+    const porUsuarioMap = new Map();
+    manuales.forEach(t => {
+      const nombre = t.usuarioResponsable?.nombre || 'Sin usuario';
+      porUsuarioMap.set(nombre, (porUsuarioMap.get(nombre) || 0) + 1);
+    });
+    const porUsuario = Array.from(porUsuarioMap.entries())
+      .map(([nombre, cantidad]) => ({ nombre, cantidad }))
+      .sort((a, b) => b.cantidad - a.cantidad);
+
+    return { total, canjeados, porUsuario };
+  }, [manuales]);
 
   useEffect(() => {
     const cargarLocalidades = async () => {
@@ -337,6 +356,46 @@ const AgregarTicketPage = () => {
         </div>
       </div>
 
+      {/* Resumen visual de tickets agregados a mano */}
+      <div className="row g-3 mt-1">
+        <div className="col-md-3">
+          <div className="card text-center h-100">
+            <div className="card-body">
+              <h3 className="mb-0">{resumenManuales.total}</h3>
+              <small className="text-muted">Agregados a mano (total)</small>
+            </div>
+          </div>
+        </div>
+        <div className="col-md-3">
+          <div className="card text-center h-100 border-success">
+            <div className="card-body">
+              <h3 className="mb-0 text-success">
+                <i className="fas fa-check-circle me-1"></i>{resumenManuales.canjeados}
+              </h3>
+              <small className="text-muted">Canjeados (deberían ser todos)</small>
+            </div>
+          </div>
+        </div>
+        <div className="col-md-6">
+          <div className="card h-100">
+            <div className="card-body">
+              <h6 className="text-uppercase text-muted small fw-semibold mb-2">Por usuario</h6>
+              {resumenManuales.porUsuario.length === 0 ? (
+                <small className="text-muted">Todavía no hay tickets agregados.</small>
+              ) : (
+                <div className="d-flex flex-wrap gap-2">
+                  {resumenManuales.porUsuario.map(({ nombre, cantidad }) => (
+                    <span key={nombre} className="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle">
+                      {nombre}: <strong>{cantidad}</strong>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="card mt-4">
         <div className="card-header d-flex justify-content-between align-items-center">
           <strong>Tickets agregados a mano ({manuales.length})</strong>
@@ -383,6 +442,7 @@ const AgregarTicketPage = () => {
                       Fecha {getSortIcon('fecha')}
                     </th>
                     <th>Estado</th>
+                    <th>Agregado por</th>
                     <th>Acciones</th>
                   </tr>
                 </thead>
@@ -405,20 +465,30 @@ const AgregarTicketPage = () => {
                         </small>
                       </td>
                       <td>
-                        {ticket.reconciliadoConCsv ? (
+                        <div className="d-flex flex-column gap-1 align-items-start">
                           <span
-                            className="table-tag table-tag-active"
-                            title="Ya se completó con la fila real del CSV"
+                            className={`table-tag ${ticket.canjeado ? 'table-tag-active' : 'table-tag-pending'}`}
+                            title={ticket.canjeado ? 'Ya quedó registrado como canjeado' : 'Todavía no figura como canjeado (revisar)'}
                           >
-                            Reconciliado
-                            {ticket.ticketsEnTransaccionAlReconciliar > 0 && (
-                              ` (${ticket.ticketsEnTransaccionAlReconciliar} ticket(s) en la transacción)`
-                            )}
+                            <i className={`fas ${ticket.canjeado ? 'fa-check-circle' : 'fa-circle-exclamation'} me-1`}></i>
+                            {ticket.canjeado ? 'Canjeado' : 'Sin canjear'}
                           </span>
-                        ) : (
-                          <span className="table-tag table-tag-pending">Solo manual</span>
-                        )}
+                          {ticket.reconciliadoConCsv ? (
+                            <span
+                              className="table-tag table-tag-active"
+                              title="Ya se completó con la fila real del CSV"
+                            >
+                              Reconciliado
+                              {ticket.ticketsEnTransaccionAlReconciliar > 0 && (
+                                ` (${ticket.ticketsEnTransaccionAlReconciliar} ticket(s) en la transacción)`
+                              )}
+                            </span>
+                          ) : (
+                            <span className="table-tag table-tag-pending">Solo manual</span>
+                          )}
+                        </div>
                       </td>
+                      <td>{ticket.usuarioResponsable?.nombre || '-'}</td>
                       <td>
                         <div className="d-flex gap-2">
                           <button
