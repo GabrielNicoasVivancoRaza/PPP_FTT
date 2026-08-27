@@ -830,7 +830,7 @@ const exportTicketsCsv = async (req, res) => {
 // @access  Private
 const canjeTicket = async (req, res) => {
   try {
-    const { quienRetira, parentesco, quienOtro, celular, cedulaQuienRetira, ticketsSeleccionados } = req.body;
+    const { quienRetira, parentesco, parentescoDescripcion, quienOtro, celular, cedulaQuienRetira, ticketsSeleccionados } = req.body;
     const ticketId = req.params.id;
 
     // Validaciones básicas
@@ -937,10 +937,12 @@ const canjeTicket = async (req, res) => {
     if (quienRetira === 'Otro') {
       ticket.parentesco = parentesco;
       ticket.quienOtro = quienOtro;
+      ticket.parentescoDescripcion = parentesco === 'Otro' ? (parentescoDescripcion?.trim() || undefined) : undefined;
     } else {
       // Limpiar campos si no es "Otro"
       ticket.parentesco = undefined;
       ticket.quienOtro = undefined;
+      ticket.parentescoDescripcion = undefined;
     }
 
     // Rol impresor_solo: canjea e imprime en una sola acción
@@ -972,6 +974,7 @@ const canjeTicket = async (req, res) => {
         celular,
         cedulaQuienRetira,
         parentesco,
+        parentescoDescripcion,
         quienOtro
       },
       seleccionados
@@ -1088,7 +1091,7 @@ const canjeTicket = async (req, res) => {
 const bulkCanjeTickets = async (req, res) => {
   try {
     const { ticketIds, canjeData } = req.body;
-    const { quienRetira, parentesco, celular, cedulaQuienRetira, quienOtro } = canjeData;
+    const { quienRetira, parentesco, parentescoDescripcion, celular, cedulaQuienRetira, quienOtro } = canjeData;
 
     // Validaciones
     if (!Array.isArray(ticketIds) || ticketIds.length === 0) {
@@ -1183,6 +1186,9 @@ const bulkCanjeTickets = async (req, res) => {
     if (quienRetira === 'Otro') {
       updateData.parentesco = parentesco;
       updateData.quienOtro = quienOtro;
+      if (parentesco === 'Otro' && parentescoDescripcion?.trim()) {
+        updateData.parentescoDescripcion = parentescoDescripcion.trim();
+      }
     }
 
     // Rol impresor_solo: canjea e imprime en una sola acción

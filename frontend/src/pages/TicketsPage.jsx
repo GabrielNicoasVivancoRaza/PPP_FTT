@@ -58,6 +58,7 @@ const TicketsPage = () => {
   const [printForm, setPrintForm] = useState({
     quienRetira: '',
     parentesco: '',
+    parentescoDescripcion: '',
     quienOtro: '',
     celular: '',
     cedulaQuienRetira: ''
@@ -70,6 +71,7 @@ const TicketsPage = () => {
   const [bulkCanjeForm, setBulkCanjeForm] = useState({
     quienRetira: '',
     parentesco: '',
+    parentescoDescripcion: '',
     quienOtro: '',
     celular: '',
     cedulaQuienRetira: ''
@@ -822,6 +824,9 @@ const TicketsPage = () => {
         if (printForm.quienRetira === 'Otro') {
           canjeData.parentesco = printForm.parentesco;
           canjeData.quienOtro = printForm.quienOtro;
+          if (printForm.parentesco === 'Otro') {
+            canjeData.parentescoDescripcion = printForm.parentescoDescripcion;
+          }
         }
 
         // Tickets de la misma transacción que el usuario marcó para
@@ -849,7 +854,7 @@ const TicketsPage = () => {
       }
 
       setShowPrintModal(false);
-      setPrintForm({ quienRetira: '', parentesco: '', quienOtro: '', celular: '', cedulaQuienRetira: '' });
+      setPrintForm({ quienRetira: '', parentesco: '', parentescoDescripcion: '', quienOtro: '', celular: '', cedulaQuienRetira: '' });
       setTicketsTransaccion([]); setTicketsSeleccionados(new Set());
 
       // Actualización suave inmediata (silenciosa)
@@ -1069,6 +1074,9 @@ const TicketsPage = () => {
       if (bulkCanjeForm.quienRetira === 'Otro') {
         canjeData.parentesco = bulkCanjeForm.parentesco;
         canjeData.quienOtro = bulkCanjeForm.quienOtro;
+        if (bulkCanjeForm.parentesco === 'Otro') {
+          canjeData.parentescoDescripcion = bulkCanjeForm.parentescoDescripcion;
+        }
       }
 
       // Usar endpoint optimizado de canje masivo
@@ -1093,7 +1101,7 @@ const TicketsPage = () => {
         // Limpiar selección y cerrar modal
         setSelectedTickets(new Set());
         setShowBulkCanjeModal(false);
-        setBulkCanjeForm({ quienRetira: '', parentesco: '', quienOtro: '', celular: '', cedulaQuienRetira: '' });
+        setBulkCanjeForm({ quienRetira: '', parentesco: '', parentescoDescripcion: '', quienOtro: '', celular: '', cedulaQuienRetira: '' });
 
         // Actualizar tickets SIN resetear filtros
         await refreshTicketsData(true);
@@ -1288,8 +1296,11 @@ const TicketsPage = () => {
   const getTicketPrintInfo = (ticket) => {
     if (!ticket.canjeado && !ticket.impreso) return null;
 
+    const descripcionParentesco = ticket.parentesco === 'Otro' && ticket.parentescoDescripcion
+      ? ` - ${ticket.parentescoDescripcion}`
+      : '';
     const retiraInfo = ticket.quienRetira === 'Otro' && ticket.quienOtro ?
-      `${ticket.quienRetira} (${ticket.parentesco || 'N/A'}: ${ticket.quienOtro})` :
+      `${ticket.quienRetira} (${ticket.parentesco || 'N/A'}${descripcionParentesco}: ${ticket.quienOtro})` :
       ticket.quienRetira || 'N/A';
 
     let estado;
@@ -2139,9 +2150,10 @@ const TicketsPage = () => {
                           onChange={(e) => {
                             // Limpiar campos relacionados cuando cambia la selección
                             setPrintForm({
-                              ...printForm, 
-                              quienRetira: e.target.value, 
-                              parentesco: '', 
+                              ...printForm,
+                              quienRetira: e.target.value,
+                              parentesco: '',
+                              parentescoDescripcion: '',
                               quienOtro: ''
                             });
                           }}
@@ -2161,7 +2173,7 @@ const TicketsPage = () => {
                             <select
                               className="form-select"
                               value={printForm.parentesco}
-                              onChange={(e) => setPrintForm({...printForm, parentesco: e.target.value})}
+                              onChange={(e) => setPrintForm({...printForm, parentesco: e.target.value, parentescoDescripcion: ''})}
                             >
                               <option value="">Seleccione el parentesco</option>
                               <option value="Esposo/a">Esposo/a</option>
@@ -2169,9 +2181,24 @@ const TicketsPage = () => {
                               <option value="Padre/Madre">Padre/Madre</option>
                               <option value="Hermano/a">Hermano/a</option>
                               <option value="Amigo/a">Amigo/a</option>
-                              <option value="Otro parentesco">Otro</option>
+                              <option value="Trabajador">Trabajador</option>
+                              <option value="Otro">Otro</option>
                             </select>
                           </div>
+
+                          {printForm.parentesco === 'Otro' && (
+                            <div className="mb-3">
+                              <label className="form-label">Descripción adicional (opcional)</label>
+                              <input
+                                type="text"
+                                className="form-control"
+                                placeholder="Ej: vecino, conocido..."
+                                value={printForm.parentescoDescripcion}
+                                maxLength={100}
+                                onChange={(e) => setPrintForm({...printForm, parentescoDescripcion: e.target.value})}
+                              />
+                            </div>
+                          )}
 
                           <div className="mb-3">
                             <label className="form-label">Nombre completo de quien retira *</label>
@@ -2310,9 +2337,10 @@ const TicketsPage = () => {
                           value={bulkCanjeForm.quienRetira}
                           onChange={(e) => {
                             setBulkCanjeForm({
-                              ...bulkCanjeForm, 
-                              quienRetira: e.target.value, 
-                              parentesco: '', 
+                              ...bulkCanjeForm,
+                              quienRetira: e.target.value,
+                              parentesco: '',
+                              parentescoDescripcion: '',
                               quienOtro: ''
                             });
                           }}
@@ -2331,7 +2359,7 @@ const TicketsPage = () => {
                             <select
                               className="form-select"
                               value={bulkCanjeForm.parentesco}
-                              onChange={(e) => setBulkCanjeForm({...bulkCanjeForm, parentesco: e.target.value})}
+                              onChange={(e) => setBulkCanjeForm({...bulkCanjeForm, parentesco: e.target.value, parentescoDescripcion: ''})}
                             >
                               <option value="">Seleccione el parentesco</option>
                               <option value="Esposo/a">Esposo/a</option>
@@ -2339,9 +2367,24 @@ const TicketsPage = () => {
                               <option value="Padre/Madre">Padre/Madre</option>
                               <option value="Hermano/a">Hermano/a</option>
                               <option value="Amigo/a">Amigo/a</option>
-                              <option value="Otro parentesco">Otro</option>
+                              <option value="Trabajador">Trabajador</option>
+                              <option value="Otro">Otro</option>
                             </select>
                           </div>
+
+                          {bulkCanjeForm.parentesco === 'Otro' && (
+                            <div className="mb-3">
+                              <label className="form-label">Descripción adicional (opcional)</label>
+                              <input
+                                type="text"
+                                className="form-control"
+                                placeholder="Ej: vecino, conocido..."
+                                value={bulkCanjeForm.parentescoDescripcion}
+                                maxLength={100}
+                                onChange={(e) => setBulkCanjeForm({...bulkCanjeForm, parentescoDescripcion: e.target.value})}
+                              />
+                            </div>
+                          )}
 
                           <div className="mb-3">
                             <label className="form-label">Nombre completo de quien retira *</label>
@@ -2524,6 +2567,12 @@ const TicketsPage = () => {
                           <strong>Nombre (Otro):</strong>
                           <p className="text-muted">{selectedCanjeInfo.quienOtro || '-'}</p>
                         </div>
+                        {selectedCanjeInfo.parentesco === 'Otro' && selectedCanjeInfo.parentescoDescripcion && (
+                          <div className="col-12">
+                            <strong>Descripción adicional:</strong>
+                            <p className="text-muted mb-0">{selectedCanjeInfo.parentescoDescripcion}</p>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

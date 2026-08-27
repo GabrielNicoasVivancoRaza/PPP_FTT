@@ -81,7 +81,9 @@ const ticketSchema = new mongoose.Schema({
   parentesco: {
     type: String,
     trim: true,
-    enum: ['Esposo/a', 'Hijo/a', 'Padre/Madre', 'Hermano/a', 'Amigo/a', 'Otro parentesco', ''],
+    // "Otro parentesco" se deja en el enum solo por compatibilidad con
+    // tickets viejos que ya lo tenían guardado; la opción nueva es "Otro"
+    enum: ['Esposo/a', 'Hijo/a', 'Padre/Madre', 'Hermano/a', 'Amigo/a', 'Trabajador', 'Otro', 'Otro parentesco', ''],
     // Solo requerido cuando quienRetira === 'Otro'
     validate: {
       validator: function(v) {
@@ -93,6 +95,12 @@ const ticketSchema = new mongoose.Schema({
       },
       message: 'Debe especificar el parentesco cuando selecciona "Otro"'
     }
+  },
+  // Descripción libre y opcional de la relación, solo cuando parentesco
+  // es "Otro" y no alcanza con una categoría fija (ej. "vecino", "primo")
+  parentescoDescripcion: {
+    type: String,
+    trim: true
   },
   celular: {
     type: String,

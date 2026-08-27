@@ -31,7 +31,10 @@ const formatearRetira = (ticket) => {
   if (quien === 'Otro') {
     const parentesco = ticket.parentesco || 'N/A';
     const quienOtro = ticket.quienOtro || '';
-    return `Otro (${parentesco}: ${quienOtro})`;
+    const descripcion = parentesco === 'Otro' && ticket.parentescoDescripcion
+      ? ` - ${ticket.parentescoDescripcion}`
+      : '';
+    return `Otro (${parentesco}${descripcion}: ${quienOtro})`;
   }
   return quien || 'N/A';
 };

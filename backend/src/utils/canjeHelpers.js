@@ -21,7 +21,7 @@ const propagateCanjeToTransaction = async (
     return [];
   }
 
-  const { usuarioId, puntoTrabajo, quienRetira, celular, cedulaQuienRetira, parentesco, quienOtro } = canjeInfo;
+  const { usuarioId, puntoTrabajo, quienRetira, celular, cedulaQuienRetira, parentesco, parentescoDescripcion, quienOtro } = canjeInfo;
 
   const setFields = {
     canjeado: true,
@@ -39,9 +39,15 @@ const propagateCanjeToTransaction = async (
   if (quienRetira === 'Otro') {
     setFields.parentesco = parentesco;
     setFields.quienOtro = quienOtro;
+    if (parentesco === 'Otro' && parentescoDescripcion?.trim()) {
+      setFields.parentescoDescripcion = parentescoDescripcion.trim();
+    } else {
+      unsetFields.parentescoDescripcion = '';
+    }
   } else {
     unsetFields.parentesco = '';
     unsetFields.quienOtro = '';
+    unsetFields.parentescoDescripcion = '';
   }
 
   const updateOp = { $set: setFields };
