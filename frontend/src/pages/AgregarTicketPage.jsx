@@ -65,23 +65,35 @@ const AgregarTicketPage = () => {
       : <i className="fas fa-sort-down ms-1"></i>;
   };
 
-  // Resumen visual: total agregados a mano, cuántos quedaron canjeados
-  // (deberían ser todos, así se confirma de un vistazo) y desglose por
-  // quién los agregó
+  // Cada fila de "Agregar Ticket" en realidad da de alta la TRANSACCIÓN, no
+  // necesariamente un solo ticket: cuando se reconcilia con el CSV real se
+  // descubre cuántos tickets tenía esa transacción en total (guardado en
+  // ticketsEnTransaccionAlReconciliar). Mientras no se reconcilie, todavía
+  // no se sabe cuántos son en realidad, así que se cuenta 1 (el que se
+  // cargó a mano) hasta que el CSV confirme el número real.
+  const cantidadTicketsDe = (t) =>
+    t.reconciliadoConCsv && t.ticketsEnTransaccionAlReconciliar > 0
+      ? t.ticketsEnTransaccionAlReconciliar
+      : 1;
+
+  // Resumen visual: cantidad real de tickets (según transacción), cuántas
+  // filas se agregaron a mano, cuántas quedaron canjeadas, y desglose por
+  // quién las agregó
   const resumenManuales = useMemo(() => {
-    const total = manuales.length;
+    const totalEntradasManuales = manuales.length;
     const canjeados = manuales.filter(t => t.canjeado).length;
+    const totalTickets = manuales.reduce((suma, t) => suma + cantidadTicketsDe(t), 0);
 
     const porUsuarioMap = new Map();
     manuales.forEach(t => {
       const nombre = t.usuarioResponsable?.nombre || 'Sin usuario';
-      porUsuarioMap.set(nombre, (porUsuarioMap.get(nombre) || 0) + 1);
+      porUsuarioMap.set(nombre, (porUsuarioMap.get(nombre) || 0) + cantidadTicketsDe(t));
     });
     const porUsuario = Array.from(porUsuarioMap.entries())
       .map(([nombre, cantidad]) => ({ nombre, cantidad }))
       .sort((a, b) => b.cantidad - a.cantidad);
 
-    return { total, canjeados, porUsuario };
+    return { totalEntradasManuales, canjeados, totalTickets, porUsuario };
   }, [manuales]);
 
   useEffect(() => {
@@ -359,10 +371,23 @@ const AgregarTicketPage = () => {
       {/* Resumen visual de tickets agregados a mano */}
       <div className="row g-3 mt-1">
         <div className="col-md-3">
+          <div className="card text-center h-100 border-primary">
+            <div className="card-body">
+              <h3 className="mb-0">{resumenManuales.totalTickets}</h3>
+              <small
+                className="text-muted"
+                title="Cada alta manual da de alta la transacción. Si ya se reconcilió con el CSV, se cuenta la cantidad real de tickets de esa transacción; si todavía no, se cuenta 1."
+              >
+                Tickets en total (según Transaction ID)
+              </small>
+            </div>
+          </div>
+        </div>
+        <div className="col-md-3">
           <div className="card text-center h-100">
             <div className="card-body">
-              <h3 className="mb-0">{resumenManuales.total}</h3>
-              <small className="text-muted">Agregados a mano (total)</small>
+              <h3 className="mb-0">{resumenManuales.totalEntradasManuales}</h3>
+              <small className="text-muted">Transacciones agregadas a mano</small>
             </div>
           </div>
         </div>
@@ -372,14 +397,14 @@ const AgregarTicketPage = () => {
               <h3 className="mb-0 text-success">
                 <i className="fas fa-check-circle me-1"></i>{resumenManuales.canjeados}
               </h3>
-              <small className="text-muted">Canjeados (deberían ser todos)</small>
+              <small className="text-muted">Canjeados (deberían ser todas)</small>
             </div>
           </div>
         </div>
-        <div className="col-md-6">
+        <div className="col-md-3">
           <div className="card h-100">
             <div className="card-body">
-              <h6 className="text-uppercase text-muted small fw-semibold mb-2">Por usuario</h6>
+              <h6 className="text-uppercase text-muted small fw-semibold mb-2">Tickets por usuario</h6>
               {resumenManuales.porUsuario.length === 0 ? (
                 <small className="text-muted">Todavía no hay tickets agregados.</small>
               ) : (
