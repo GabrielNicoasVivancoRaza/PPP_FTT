@@ -29,6 +29,7 @@ const AgregarTicketPage = () => {
   const [manuales, setManuales] = useState([]);
   const [cargandoManuales, setCargandoManuales] = useState(true);
   const [editando, setEditando] = useState(null); // Ticket ID en edición, o null si es alta nueva
+  const [busqueda, setBusqueda] = useState('');
 
   // Orden del listado de tickets agregados a mano: por fecha o por
   // Transaction ID, ascendente o descendente
@@ -95,6 +96,26 @@ const AgregarTicketPage = () => {
 
     return { totalEntradasManuales, canjeados, totalTickets, porUsuario };
   }, [manuales]);
+
+  // Buscador de la tabla "Tickets agregados a mano" (nombre, email, cédula,
+  // Transaction ID, Ticket ID) — insensible a tildes y mayúsculas
+  const normalizarBusqueda = (texto) =>
+    String(texto || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+  const manualesFiltrados = useMemo(() => {
+    const termino = normalizarBusqueda(busqueda.trim());
+    if (!termino) return manuales;
+    return manuales.filter(t => {
+      const campos = [
+        `${t['First Name'] || ''} ${t['Last Name'] || ''}`,
+        t['Email'],
+        t['Numero de Cedula:'],
+        t['Transaction ID'],
+        t['Ticket ID']
+      ];
+      return campos.some(campo => normalizarBusqueda(campo).includes(termino));
+    });
+  }, [manuales, busqueda]);
 
   useEffect(() => {
     const cargarLocalidades = async () => {
@@ -422,8 +443,13 @@ const AgregarTicketPage = () => {
       </div>
 
       <div className="card mt-4">
-        <div className="card-header d-flex justify-content-between align-items-center">
-          <strong>Tickets agregados a mano ({manuales.length})</strong>
+        <div className="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <strong>
+            Tickets agregados a mano{' '}
+            {busqueda.trim()
+              ? `(${manualesFiltrados.length} de ${manuales.length})`
+              : `(${manuales.length})`}
+          </strong>
           <button className="btn btn-sm btn-outline-secondary" onClick={cargarManuales} disabled={cargandoManuales}>
             {cargandoManuales ? (
               <span className="spinner-border spinner-border-sm me-1"></span>
@@ -434,6 +460,23 @@ const AgregarTicketPage = () => {
           </button>
         </div>
         <div className="card-body">
+          <div className="mb-3">
+            <div className="input-group">
+              <span className="input-group-text"><i className="fas fa-search"></i></span>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="Buscar por nombre, email, cédula, Transaction ID o Ticket ID..."
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+              />
+              {busqueda && (
+                <button className="btn btn-outline-secondary" type="button" onClick={() => setBusqueda('')}>
+                  <i className="fas fa-times"></i>
+                </button>
+              )}
+            </div>
+          </div>
           {cargandoManuales ? (
             <div className="d-flex justify-content-center py-3">
               <div className="spinner-border" role="status">
@@ -442,6 +485,8 @@ const AgregarTicketPage = () => {
             </div>
           ) : manuales.length === 0 ? (
             <div className="alert alert-secondary mb-0">Todavía no se agregó ningún ticket a mano.</div>
+          ) : manualesFiltrados.length === 0 ? (
+            <div className="alert alert-secondary mb-0">No se encontró ningún ticket agregado a mano con &quot;{busqueda}&quot;.</div>
           ) : (
             <div className="table-responsive">
               <table className="table table-hover align-middle">
@@ -472,7 +517,7 @@ const AgregarTicketPage = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {manuales.map(ticket => (
+                  {manualesFiltrados.map(ticket => (
                     <tr key={ticket['Ticket ID']}>
                       <td>{`${ticket['First Name'] || ''} ${ticket['Last Name'] || ''}`.trim()}</td>
                       <td>{ticket['Ticket']}</td>

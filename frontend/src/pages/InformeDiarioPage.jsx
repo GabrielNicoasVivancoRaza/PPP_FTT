@@ -7,7 +7,7 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 
 const hoyISO = () => new Date().toISOString().slice(0, 10);
 
-const TablaLocalidades = ({ filas, tituloColumnaPorcentaje }) => {
+const TablaLocalidades = ({ filas, tituloColumnaPorcentaje, mostrarFaltan }) => {
   if (filas.length === 0) {
     return <div className="alert alert-secondary mb-0">No hay tickets registrados todavía.</div>;
   }
@@ -18,32 +18,46 @@ const TablaLocalidades = ({ filas, tituloColumnaPorcentaje }) => {
         <thead className="table-dark">
           <tr>
             <th>Localidad</th>
-            <th className="text-end">Canjeados</th>
-            <th className="text-end">Total localidad</th>
+            <th className="text-end">Canjeados / Total</th>
+            {mostrarFaltan && <th className="text-end">Por canjear</th>}
             <th className="text-end">{tituloColumnaPorcentaje}</th>
             <th className="text-end">% de la localidad</th>
           </tr>
         </thead>
         <tbody>
-          {filas.map(fila => (
-            <tr key={fila.localidad}>
-              <td><strong>{fila.localidad}</strong></td>
-              <td className="text-end">{fila.canjeados}</td>
-              <td className="text-end">{fila.totalLocalidad}</td>
-              <td className="text-end">{fila.porcentajeDelTotalCanjeado}%</td>
-              <td className="text-end">
-                <div className="d-flex align-items-center justify-content-end gap-2">
-                  <div className="progress" style={{ width: 80, height: 6 }}>
-                    <div
-                      className="progress-bar"
-                      style={{ width: `${Math.min(fila.porcentajeDeLocalidad, 100)}%` }}
-                    ></div>
+          {filas.map(fila => {
+            const faltan = fila.totalLocalidad - fila.canjeados;
+            return (
+              <tr key={fila.localidad}>
+                <td><strong>{fila.localidad}</strong></td>
+                <td className="text-end">
+                  <span className="fw-semibold">{fila.canjeados}</span>
+                  <span className="text-muted">/{fila.totalLocalidad}</span>
+                </td>
+                {mostrarFaltan && (
+                  <td className="text-end">
+                    {faltan > 0 ? (
+                      <span className="badge bg-warning text-dark">{faltan}</span>
+                    ) : (
+                      <span className="badge bg-success">0 <i className="fas fa-check ms-1"></i></span>
+                    )}
+                  </td>
+                )}
+                <td className="text-end">{fila.porcentajeDelTotalCanjeado}%</td>
+                <td className="text-end">
+                  <div className="d-flex align-items-center justify-content-end gap-2">
+                    <div className="progress" style={{ width: 80, height: 6 }}>
+                      <div
+                        className="progress-bar"
+                        style={{ width: `${Math.min(fila.porcentajeDeLocalidad, 100)}%` }}
+                      ></div>
+                    </div>
+                    {fila.porcentajeDeLocalidad}%
                   </div>
-                  {fila.porcentajeDeLocalidad}%
-                </div>
-              </td>
-            </tr>
-          ))}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -97,6 +111,10 @@ const InformeDiarioPage = () => {
       setDescargando(false);
     }
   };
+
+  const totalPorCanjear = reporte
+    ? reporte.total.porLocalidad.reduce((suma, f) => suma + (f.totalLocalidad - f.canjeados), 0)
+    : 0;
 
   if (!hasRole(user, 'jefe')) {
     return (
@@ -168,14 +186,18 @@ const InformeDiarioPage = () => {
 
           {/* Total acumulado */}
           <div className="card">
-            <div className="card-header d-flex justify-content-between align-items-center">
+            <div className="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
               <strong><i className="fas fa-chart-pie me-2"></i>Total acumulado (desde el inicio)</strong>
-              <span className="badge bg-success fs-6">{reporte.total.totalCanjeados} canjeados en total</span>
+              <div className="d-flex gap-2">
+                <span className="badge bg-success fs-6">{reporte.total.totalCanjeados} canjeados en total</span>
+                <span className="badge bg-warning text-dark fs-6">{totalPorCanjear} por canjear</span>
+              </div>
             </div>
             <div className="card-body p-0">
               <TablaLocalidades
                 filas={reporte.total.porLocalidad}
                 tituloColumnaPorcentaje="% del total canjeado"
+                mostrarFaltan
               />
             </div>
           </div>
