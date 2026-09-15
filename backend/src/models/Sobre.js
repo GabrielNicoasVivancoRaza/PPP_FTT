@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { getEventCollectionName } = require('../config/collectionName');
 
 // Ubicación física de los boletos impresos, ordenados en sobres por nombre
 // (proceso externo, ajeno a esta app). El join con los tickets es por
@@ -44,4 +45,5 @@ const sobreSchema = new mongoose.Schema({
   timestamps: true
 });
 
-module.exports = mongoose.model('Sobre', sobreSchema, 'Sobres');
+// Sobres separados por evento (ver getEventCollectionName)
+module.exports = mongoose.model('Sobre', sobreSchema, getEventCollectionName('Sobres'));

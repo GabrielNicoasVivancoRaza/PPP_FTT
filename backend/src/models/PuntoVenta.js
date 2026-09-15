@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { getEventCollectionName } = require('../config/collectionName');
 
 const puntoVentaSchema = new mongoose.Schema({
   nombre: {
@@ -34,4 +35,5 @@ const puntoVentaSchema = new mongoose.Schema({
 puntoVentaSchema.index({ nombre: 1 });
 puntoVentaSchema.index({ activo: 1 });
 
-module.exports = mongoose.model('PuntoVenta', puntoVentaSchema, 'PuntosVenta');
+// Un juego de puntos de venta por evento (ver getEventCollectionName)
+module.exports = mongoose.model('PuntoVenta', puntoVentaSchema, getEventCollectionName('PuntosVenta'));

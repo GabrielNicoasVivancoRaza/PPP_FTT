@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { getEventCollectionName } = require('../config/collectionName');
 
 const auditLogSchema = new mongoose.Schema({
   tipo: {
@@ -40,4 +41,6 @@ auditLogSchema.index({ tipo: 1, createdAt: -1 });
 auditLogSchema.index({ usuario: 1, createdAt: -1 });
 auditLogSchema.index({ ticketId: 1, tipo: 1 });
 
-module.exports = mongoose.model('AuditLog', auditLogSchema);
+// Una colección de auditoría por evento (ver getEventCollectionName): así
+// dos eventos corriendo sobre el mismo MONGODB_URI no se mezclan los logs
+module.exports = mongoose.model('AuditLog', auditLogSchema, getEventCollectionName('AuditLog'));

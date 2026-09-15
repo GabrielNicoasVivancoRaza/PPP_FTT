@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { getEventCollectionName } = require('../config/collectionName');
 
 // Solicitud de impresión generada cuando un staff canjea tickets y el modo
 // de impresión por cola está habilitado. Agrupa por Transaction ID.
@@ -61,4 +62,5 @@ const printRequestSchema = new mongoose.Schema({
 printRequestSchema.index({ estado: 1, color: 1 });
 printRequestSchema.index({ transactionId: 1, estado: 1 });
 
-module.exports = mongoose.model('PrintRequest', printRequestSchema, 'PrintRequests');
+// Una cola de impresión por evento (ver getEventCollectionName)
+module.exports = mongoose.model('PrintRequest', printRequestSchema, getEventCollectionName('PrintRequests'));

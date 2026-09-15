@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { getEventCollectionName } = require('../config/collectionName');
 
 // Documento único (singleton) con la configuración global de impresión
 const printerSettingsSchema = new mongoose.Schema({
@@ -35,4 +36,5 @@ printerSettingsSchema.statics.getSettings = async function() {
   return settings;
 };
 
-module.exports = mongoose.model('PrinterSettings', printerSettingsSchema, 'PrinterSettings');
+// Una configuración de impresión/colores por evento (ver getEventCollectionName)
+module.exports = mongoose.model('PrinterSettings', printerSettingsSchema, getEventCollectionName('PrinterSettings'));

@@ -23,4 +23,18 @@ const getCollectionName = () => {
   return nombre;
 };
 
-module.exports = { getCollectionName };
+/**
+ * Nombre de colección "por evento" para todo lo que NO deben compartir dos
+ * eventos corriendo sobre el mismo MONGODB_URI (auditoría, puntos de venta,
+ * configuración de impresión/colores, cola de impresión, sobres): se arma
+ * agregando COLLECTION_NAME como sufijo al nombre base, así cada deploy
+ * (cada uno con su propio COLLECTION_NAME) termina leyendo y escribiendo en
+ * su propio juego de colecciones sin necesitar un MONGODB_URI aparte ni
+ * ninguna variable de entorno nueva.
+ *
+ * Los usuarios (Usuarios/User) quedan afuera a propósito: se comparten entre
+ * eventos (el mismo jefe/staff puede loguearse en cualquiera de los dos).
+ */
+const getEventCollectionName = (nombreBase) => `${nombreBase}_${getCollectionName()}`;
+
+module.exports = { getCollectionName, getEventCollectionName };
