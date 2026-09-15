@@ -953,6 +953,36 @@ const canjeTicket = async (req, res) => {
     const io = req.app.get('io');
     let ticketsImpresosTransaccion = 0;
 
+    // Rol staff: encolar solicitud de impresión para impresor_cola con TODOS
+    // los tickets de la transacción + tipo (no solo el que se acaba de
+    // canjear), ya que se imprimen todos juntos. Se hace ANTES de propagar
+    // el canje (abajo) para que esa propagación ya vea "pendienteImpresion"
+    // actualizado al recargar los tickets de la transacción.
+    if (printerSettings.enabled && hasRole(req.user, 'staff')) {
+      const tipo = ticket['Ticket'];
+      const ticketIdsTransaccion = await getUnprintedTransactionTicketIds(TicketModel, ticket['Transaction ID'], tipo);
+      // Si no queda nada por imprimir (p. ej. otro impresor ya imprimió toda
+      // la transacción antes de este canje), no hace falta crear solicitud
+      if (ticketIdsTransaccion.length > 0) {
+        await createOrExtendPrintRequest({
+          transactionId: ticket['Transaction ID'],
+          ticketIds: ticketIdsTransaccion,
+          tipos: tipo ? [tipo] : [],
+          color: resolveColor(printerSettings.ticketColors, tipo),
+          puntoTrabajo: req.user.puntoTrabajo,
+          usuarioId: req.user._id,
+          io
+        });
+        // createOrExtendPrintRequest actualiza el campo en la base con el
+        // driver de Mongo, no en este documento ya cargado en memoria: hay
+        // que reflejarlo acá para que la respuesta y el evento de socket de
+        // abajo no salgan con el valor viejo (pendienteImpresion: false)
+        if (ticketIdsTransaccion.includes(ticket['Ticket ID'])) {
+          ticket.pendienteImpresion = true;
+        }
+      }
+    }
+
     // Propagar la información de canje SOLO a los tickets que el usuario
     // eligió en el modal (checkboxes). Si no eligió ninguno, se canjea
     // únicamente el ticket actual.
@@ -986,27 +1016,6 @@ const canjeTicket = async (req, res) => {
       ticketsImpresosTransaccion = afectados.length;
       const otros = afectados.filter(t => t['Ticket ID'] !== ticket['Ticket ID']);
       emitTicketUpdates(io, otros, 'impresion-transaccion');
-    }
-
-    // Rol staff: encolar solicitud de impresión para impresor_cola con TODOS
-    // los tickets de la transacción + tipo (no solo el que se acaba de
-    // canjear), ya que se imprimen todos juntos
-    if (printerSettings.enabled && hasRole(req.user, 'staff')) {
-      const tipo = ticket['Ticket'];
-      const ticketIdsTransaccion = await getUnprintedTransactionTicketIds(TicketModel, ticket['Transaction ID'], tipo);
-      // Si no queda nada por imprimir (p. ej. otro impresor ya imprimió toda
-      // la transacción antes de este canje), no hace falta crear solicitud
-      if (ticketIdsTransaccion.length > 0) {
-        await createOrExtendPrintRequest({
-          transactionId: ticket['Transaction ID'],
-          ticketIds: ticketIdsTransaccion,
-          tipos: tipo ? [tipo] : [],
-          color: resolveColor(printerSettings.ticketColors, tipo),
-          puntoTrabajo: req.user.puntoTrabajo,
-          usuarioId: req.user._id,
-          io
-        });
-      }
     }
 
     // Crear log de auditoría de forma segura
@@ -1358,15 +1367,7 @@ const bulkCanjeTickets = async (req, res) => {
       console.error('Error al crear logs de auditoría:', auditError);
     }
 
-    // Obtener tickets actualizados con populate
-    const updatedTickets = await TicketModel.find({
-      'Ticket ID': { $in: ticketIds }
-    }).populate('usuarioResponsable', 'nombre usuario email');
-
-    // Emitir eventos de Socket.IO a la sala común de tickets
     const io = req.app.get('io');
-    emitTicketUpdates(io, ticketsPropagadosExtra, 'canje-transaccion');
-    emitTicketUpdates(io, updatedTickets, 'canje');
 
     // Rol impresor_solo: propagar impresión a TODOS los tickets de la misma
     // transacción y tipo (hayan sido canjeados o no), ya que la impresión en
@@ -1413,6 +1414,18 @@ const bulkCanjeTickets = async (req, res) => {
         });
       }
     }
+
+    // Obtener tickets actualizados con populate: se hace DESPUÉS de los
+    // bloques de impresión de arriba para que "impreso"/"pendienteImpresion"
+    // ya reflejen lo que acaba de pasar (si no, el emit y la respuesta
+    // quedan con el estado viejo, de antes de encolar la impresión)
+    const updatedTickets = await TicketModel.find({
+      'Ticket ID': { $in: ticketIds }
+    }).populate('usuarioResponsable', 'nombre usuario email');
+
+    // Emitir eventos de Socket.IO a la sala común de tickets
+    emitTicketUpdates(io, ticketsPropagadosExtra, 'canje-transaccion');
+    emitTicketUpdates(io, updatedTickets, 'canje');
 
     // Mensaje personalizado según resultados
     let message = `${bulkResult.modifiedCount} tickets canjeados exitosamente`;
