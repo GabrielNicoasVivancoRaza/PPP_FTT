@@ -30,6 +30,11 @@ const createOrExtendPrintRequest = async ({ transactionId, ticketIds, tipos, col
     });
   }
 
+  await Ticket.updateMany(
+    { 'Ticket ID': { $in: ticketIds } },
+    { $set: { pendienteImpresion: true } }
+  );
+
   if (io) {
     io.to('impresores').emit('print-queue-updated', {
       action: 'nueva-solicitud',

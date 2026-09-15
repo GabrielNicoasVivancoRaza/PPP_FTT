@@ -51,6 +51,16 @@ const ticketSchema = new mongoose.Schema({
   fechaImpresion: {
     type: Date
   },
+  // true SOLO mientras el ticket tiene una PrintRequest pendiente/enviada
+  // (encolado por canje de staff, importación con corte de fecha, o alta
+  // manual). Es distinto de "impreso: false": la gran mayoría de tickets
+  // nunca pasa por esta cola porque se imprimieron en tandas externas desde
+  // SquadUp, así que "no impreso" NO significa "pendiente de imprimir".
+  // Se usa para el resaltado amarillo "Debe imprimir" en la tabla.
+  pendienteImpresion: {
+    type: Boolean,
+    default: false
+  },
   usuarioResponsable: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'

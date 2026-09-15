@@ -20,6 +20,32 @@ const parseCorteLocalAUtc = (valor) => {
   return isNaN(fecha.getTime()) ? null : fecha;
 };
 
+// La columna "Transaction Date (UTC)" del CSV viene como texto plano
+// "MM/DD/AA HH:mm:ss" (formato de EE.UU.: mes/día/año) que YA está en UTC.
+// OJO: pasarla directo a `new Date(texto)` NO sirve, porque al no traer 'Z'
+// ni offset, JS la interpreta como hora LOCAL del servidor, no como UTC —
+// el resultado queda desfasado según en qué huso horario esté corriendo el
+// proceso (ej. 5 horas de diferencia si corre en America/Guayaquil en vez
+// de UTC). Se parsea a mano con Date.UTC(...) para que sea el mismo
+// instante sin importar dónde se ejecute el servidor.
+const parseTransactionDateUtc = (valor) => {
+  if (!valor) return null;
+  const match = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})\s+(\d{1,2}):(\d{2}):(\d{2})$/.exec(valor.trim());
+  if (!match) return null;
+  const [, mesStr, diaStr, anioStr, horaStr, minStr, segStr] = match;
+  let anio = parseInt(anioStr, 10);
+  if (anio < 100) anio += 2000;
+  const fecha = new Date(Date.UTC(
+    anio,
+    parseInt(mesStr, 10) - 1,
+    parseInt(diaStr, 10),
+    parseInt(horaStr, 10),
+    parseInt(minStr, 10),
+    parseInt(segStr, 10)
+  ));
+  return isNaN(fecha.getTime()) ? null : fecha;
+};
+
 // SquadUp a veces solo exporta cierto dato (cédula, medio de pago) UNA sola
 // vez por Transaction ID (en la primera fila de esa compra), dejando el
 // resto de las filas de la misma transacción sin ese dato. Se arma un mapa
@@ -412,8 +438,8 @@ const importCsv = async (req, res) => {
       if (printerSettings.enabled) {
         const grupos = new Map(); // "transactionId||tipo" -> { transactionId, tipo }
         for (const doc of nuevos) {
-          const fechaUtc = new Date(doc['Transaction Date (UTC)']);
-          if (isNaN(fechaUtc.getTime()) || fechaUtc <= corteImpresionUtc) continue;
+          const fechaUtc = parseTransactionDateUtc(doc['Transaction Date (UTC)']);
+          if (!fechaUtc || fechaUtc <= corteImpresionUtc) continue;
           const transactionId = doc['Transaction ID'];
           const tipo = doc['Ticket'];
           grupos.set(`${transactionId}||${tipo}`, { transactionId, tipo });

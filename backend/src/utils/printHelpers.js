@@ -41,6 +41,7 @@ const markTransactionPrinted = async (TicketModel, transactionId, tipo, fallback
           $set: {
             impreso: true,
             fechaImpresion: now,
+            pendienteImpresion: false,
             ...(ticket.puntoTrabajo ? {} : { puntoTrabajo: fallbackPuntoTrabajo })
           }
         }
@@ -48,6 +49,13 @@ const markTransactionPrinted = async (TicketModel, transactionId, tipo, fallback
     }));
     await TicketModel.bulkWrite(bulkOps);
   }
+
+  // Por si algún ticket de la transacción quedó marcado pendienteImpresion
+  // sin haber entrado al bulk de arriba (ya estaba impreso por otra vía)
+  await TicketModel.updateMany(
+    { ...baseQuery, pendienteImpresion: true },
+    { $set: { pendienteImpresion: false } }
+  );
 
   return TicketModel.find(baseQuery);
 };

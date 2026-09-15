@@ -1357,8 +1357,11 @@ const TicketsPage = () => {
   // transacción sí se imprimió), por eso 'impreso' y 'canjeado' se evalúan
   // de forma independiente.
   // 'completed' (verde) = canjeado + impreso (o impresión no activa)
-  // 'sinImprimir' (amarillo) = todavía no está impreso (canjeado o no) — con
-  // la impresión por cola activa, esto es lo que hace falta mandar a imprimir
+  // 'sinImprimir' (amarillo) = está encolado (pendienteImpresion) esperando
+  // que el impresor lo mande a imprimir — NO es lo mismo que "impreso:false",
+  // porque la mayoría de tickets nunca pasa por esta cola: se imprimieron
+  // en tandas externas desde SquadUp y por eso "impreso" queda en false sin
+  // que eso signifique que hagan falta imprimirse.
   // 'printed' (azul) = impreso pero aún no canjeado individualmente
   const getTicketPrintStatus = (ticket) => {
     // Fraude y eliminado mandan sobre cualquier otro estado: son bloqueos
@@ -1368,9 +1371,10 @@ const TicketsPage = () => {
     // para que todos la vean mientras esté colocada
     if (ticket.informacion) return 'informacion';
     if (ticket.canjeado && (ticket.impreso || !printerEnabled)) return 'completed';
-    // Solo se marca "falta imprimir" con la impresión por cola activa: si
-    // está apagada, el campo "impreso" no se usa para nada operativamente
-    if (printerEnabled && !ticket.impreso) return 'sinImprimir';
+    // Solo se marca "falta imprimir" si está genuinamente encolado (por
+    // canje de staff, corte de fecha en importación, o alta manual) — no
+    // por cualquier ticket con impreso:false
+    if (printerEnabled && ticket.pendienteImpresion) return 'sinImprimir';
     if (ticket.impreso) return 'printed';
     return 'normal';
   };
@@ -1406,7 +1410,7 @@ const TicketsPage = () => {
       ticket.quienRetira || 'N/A';
 
     let estado;
-    if (ticket.canjeado && printerEnabled && !ticket.impreso) estado = 'Canjeado (pendiente de imprimir)';
+    if (ticket.canjeado && printerEnabled && ticket.pendienteImpresion) estado = 'Canjeado (pendiente de imprimir)';
     else if (ticket.canjeado) estado = 'Canjeado';
     else estado = 'Impreso (pendiente de canje)';
 
