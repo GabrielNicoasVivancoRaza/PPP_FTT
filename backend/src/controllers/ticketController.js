@@ -877,8 +877,10 @@ const canjeTicket = async (req, res) => {
       }
     }
 
-    // Validar que quienRetira sea una opción válida
-    const opcionesValidas = ['Titular', 'Titular Compra', 'Otro'];
+    // Validar que quienRetira sea una opción válida. "Titular Compra" se
+    // sacó de las opciones (el formulario ya no la ofrece), pero se deja
+    // fuera de esta lista a propósito para que ya no se pueda enviar más.
+    const opcionesValidas = ['Titular', 'Otro'];
     if (!opcionesValidas.includes(quienRetira)) {
       return res.status(400).json({
         success: false,

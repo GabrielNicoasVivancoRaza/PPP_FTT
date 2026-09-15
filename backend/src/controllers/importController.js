@@ -5,28 +5,35 @@ const { emitTicketUpdates } = require('../utils/printHelpers');
 const { CAMPOS_CEDULA } = require('../utils/searchHelpers');
 const { isValidCedula } = require('../utils/validators');
 
-// SquadUp exporta la cédula UNA sola vez por Transaction ID (en la primera
-// fila de esa compra), dejando el resto de las filas de la misma transacción
-// sin cédula. Se arma un mapa Transaction ID -> cédula con la primera que se
-// encuentre entre TODAS las filas del archivo, para completar las que vengan
-// vacías (tanto en tickets nuevos como en los que ya existían en la base).
-//
-// Solo se acepta como fuente un valor que realmente tenga forma de cédula
-// (puros números). Esto es a propósito: si el detector de columna llega a
-// enganchar la columna equivocada (por ejemplo una pregunta de "¿Entiende
-// que debe presentar su cédula?" con respuesta "Entiendo"), ese valor NUNCA
-// se propaga ni se guarda como si fuera la cédula real.
-const armarCedulaPorTransaccion = (docs) => {
+// SquadUp a veces solo exporta cierto dato (cédula, medio de pago) UNA sola
+// vez por Transaction ID (en la primera fila de esa compra), dejando el
+// resto de las filas de la misma transacción sin ese dato. Se arma un mapa
+// Transaction ID -> valor con el primero que se encuentre entre TODAS las
+// filas del archivo, para completar las que vengan vacías (tanto en tickets
+// nuevos como en los que ya existían en la base).
+const armarValorPorTransaccion = (docs, campo, esValido) => {
   const mapa = new Map();
   for (const doc of docs) {
     const transId = doc['Transaction ID'];
-    const cedula = doc['Numero de Cedula:'];
-    if (transId && isValidCedula(cedula) && !mapa.has(transId)) {
-      mapa.set(transId, cedula.trim());
+    const valor = doc[campo];
+    if (transId && esValido(valor) && !mapa.has(transId)) {
+      mapa.set(transId, valor.trim());
     }
   }
   return mapa;
 };
+
+// Solo se acepta como fuente de cédula un valor que realmente tenga forma
+// de cédula (puros números). Esto es a propósito: si el detector de columna
+// llega a enganchar la columna equivocada (por ejemplo una pregunta de
+// "¿Entiende que debe presentar su cédula?" con respuesta "Entiendo"), ese
+// valor NUNCA se propaga ni se guarda como si fuera la cédula real.
+const armarCedulaPorTransaccion = (docs) => armarValorPorTransaccion(docs, 'Numero de Cedula:', isValidCedula);
+
+// Para el medio de pago no hay un formato fijo que validar (puede ser "1234"
+// o un email de PayPal): alcanza con que no venga vacío.
+const esValorNoVacio = (v) => typeof v === 'string' && v.trim().length > 0;
+const armarLast4PorTransaccion = (docs) => armarValorPorTransaccion(docs, 'Last4/PayPal Email', esValorNoVacio);
 
 // true si el documento ya tiene una cédula VÁLIDA (solo números) cargada en
 // alguna variante de nombre de columna — no hace falta tocarlo. Un valor
@@ -34,6 +41,9 @@ const armarCedulaPorTransaccion = (docs) => {
 // detección de columna) NO cuenta como cédula cargada, así que sigue
 // siendo candidato a corregirse.
 const tieneCedulaValidaCargada = (doc) => CAMPOS_CEDULA.some(campo => isValidCedula(doc[campo]));
+
+// true si el ticket ya tiene guardado el medio de pago
+const tieneLast4Cargado = (doc) => esValorNoVacio(doc['Last4/PayPal Email']);
 
 // @desc    Importar un CSV del evento: agrega SOLO los tickets que todavía
 // no existen (por "Ticket ID"), sin tocar los que ya están (no se pisa
@@ -102,6 +112,19 @@ const importCsv = async (req, res) => {
         if (cedula) {
           doc['Numero de Cedula:'] = cedula;
           cedulasCompletadasNuevos++;
+        }
+      }
+    }
+
+    // --- Completar medio de pago (Last4/PayPal) faltante, mismo criterio ---
+    const last4PorTransaccion = armarLast4PorTransaccion(candidatos);
+    let last4CompletadosNuevos = 0;
+    for (const doc of candidatos) {
+      if (!esValorNoVacio(doc['Last4/PayPal Email'])) {
+        const last4 = last4PorTransaccion.get(doc['Transaction ID']);
+        if (last4) {
+          doc['Last4/PayPal Email'] = last4;
+          last4CompletadosNuevos++;
         }
       }
     }
@@ -222,6 +245,7 @@ const importCsv = async (req, res) => {
       .select({
         'Ticket ID': 1,
         'Transaction ID': 1,
+        'Last4/PayPal Email': 1,
         ...Object.fromEntries(CAMPOS_CEDULA.map(campo => [campo, 1]))
       })
       .lean();
@@ -334,6 +358,31 @@ const importCsv = async (req, res) => {
 
     const cedulasCompletadas = cedulasCompletadasNuevos + ticketsConCedulaCompletada.length;
 
+    // --- Completar medio de pago (Last4/PayPal) en tickets que YA existían ---
+    // Mismo criterio que la cédula: esto también corrige de una vez los
+    // tickets que quedaron marcados "Cash" solo porque esta columna nunca se
+    // había estado importando (no porque realmente hayan pagado en efectivo).
+    let ticketsConLast4Completado = [];
+    const sinLast4 = existentes.filter(t => !tieneLast4Cargado(t));
+    const bulkOpsLast4 = sinLast4
+      .map(t => ({ ticketId: t['Ticket ID'], last4: last4PorTransaccion.get(t['Transaction ID']) }))
+      .filter(op => op.last4)
+      .map(({ ticketId, last4 }) => ({
+        updateOne: {
+          filter: { 'Ticket ID': ticketId },
+          update: { $set: { 'Last4/PayPal Email': last4 } }
+        }
+      }));
+
+    if (bulkOpsLast4.length > 0) {
+      await TicketModel.collection.bulkWrite(bulkOpsLast4, { ordered: false });
+      ticketsConLast4Completado = await TicketModel.find({
+        'Ticket ID': { $in: bulkOpsLast4.map(op => op.updateOne.filter['Ticket ID']) }
+      });
+    }
+
+    const last4Completados = last4CompletadosNuevos + ticketsConLast4Completado.length;
+
     // --- Detección de tickets eliminados del evento ---
     // Todo ticket que esté en la base pero YA NO venga en el CSV significa
     // que se anuló/reembolsó en SquadUp. No se borra: se marca como
@@ -387,6 +436,7 @@ const importCsv = async (req, res) => {
       eliminados: idsDesaparecidos.length,
       eliminadosYaCanjeados: eliminadosTrasCanje.length,
       cedulasCompletadas,
+      last4Completados,
       ticketsCanjeadosPorTransaccionManual
     };
 
@@ -438,6 +488,10 @@ const importCsv = async (req, res) => {
         emitTicketUpdates(io, ticketsConCedulaCompletada, 'cedula-completada');
       }
 
+      if (ticketsConLast4Completado.length > 0) {
+        emitTicketUpdates(io, ticketsConLast4Completado, 'last4-completado');
+      }
+
       // Pintar en vivo los tickets que quedaron marcados como eliminados
       if (ticketsEliminados.length > 0) {
         emitTicketUpdates(io, ticketsEliminados, 'ticket-eliminado');
@@ -461,6 +515,9 @@ const importCsv = async (req, res) => {
     }
     if (cedulasCompletadas > 0) {
       message += ` ${cedulasCompletadas} cédula(s) completada(s) automáticamente usando otra fila de la misma Transaction ID.`;
+    }
+    if (last4Completados > 0) {
+      message += ` ${last4Completados} medio(s) de pago completado(s) automáticamente (dejaron de figurar como "Cash" sin serlo).`;
     }
     if (idsDesaparecidos.length > 0) {
       message += ` ${idsDesaparecidos.length} ya no están en el archivo y se marcaron como eliminados`;

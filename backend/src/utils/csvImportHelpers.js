@@ -16,7 +16,8 @@ const CAMPOS_DIRECTOS = [
   'Transaction ID',
   'Transaction Date (Local)',
   'Barcode Data',
-  'Ticket ID'
+  'Ticket ID',
+  'Last4/PayPal Email'
 ];
 
 // Campos sin los cuales un ticket no se considera válido para importar

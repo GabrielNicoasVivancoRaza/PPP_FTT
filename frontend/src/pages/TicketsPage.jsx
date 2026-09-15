@@ -67,6 +67,11 @@ const TicketsPage = () => {
   
   // Estados para selección múltiple (admin y staff)
   const [selectedTickets, setSelectedTickets] = useState(new Set());
+  // Como selectedTickets persiste entre páginas pero "tickets" solo trae la
+  // página cargada, se cachean los datos completos de cada ticket apenas se
+  // ve seleccionado: si no, la vista previa del canje/información masivos
+  // "pierde" (no detecta) los que quedaron marcados en otra página.
+  const [selectedTicketsCache, setSelectedTicketsCache] = useState(new Map());
   const [showBulkCanjeModal, setShowBulkCanjeModal] = useState(false);
   const [bulkCanjeForm, setBulkCanjeForm] = useState({
     quienRetira: '',
@@ -953,6 +958,35 @@ const TicketsPage = () => {
     });
   };
 
+  // Cada vez que se cargan/refrescan tickets, se guarda una copia de los
+  // que estén seleccionados en el cache (así al volver de otra página no
+  // "desaparecen" de la vista previa del canje/información masivos)
+  useEffect(() => {
+    if (selectedTickets.size === 0 || tickets.length === 0) return;
+    setSelectedTicketsCache(prev => {
+      let cambio = false;
+      const next = new Map(prev);
+      tickets.forEach(t => {
+        const id = t['Ticket ID'];
+        if (selectedTickets.has(id)) {
+          next.set(id, t);
+          cambio = true;
+        }
+      });
+      return cambio ? next : prev;
+    });
+  }, [tickets, selectedTickets]);
+
+  // Datos completos de TODOS los tickets seleccionados, sin importar en qué
+  // página estén: usa la página actual cuando está disponible (más al día)
+  // y el cache para los que quedaron seleccionados en otra página.
+  const getSelectedTicketsFull = () => {
+    const porIdPaginaActual = new Map(tickets.map(t => [t['Ticket ID'], t]));
+    return Array.from(selectedTickets)
+      .map(id => porIdPaginaActual.get(id) || selectedTicketsCache.get(id))
+      .filter(Boolean);
+  };
+
   const handleClearSelection = () => setSelectedTickets(new Set());
 
   const handleBulkCanje = () => {
@@ -1054,8 +1088,7 @@ const TicketsPage = () => {
     // Transaction ID involucradas (unidas por coma) antes de esperar al API.
     if (roles.includes('impresor_solo')) {
       const transactionIds = [...new Set(
-        tickets
-          .filter(t => selectedTickets.has(t['Ticket ID']))
+        getSelectedTicketsFull()
           .map(t => t['Transaction ID'])
           .filter(Boolean)
       )];
@@ -2160,7 +2193,6 @@ const TicketsPage = () => {
                         >
                           <option value="">Seleccione una opción</option>
                           <option value="Titular">Titular</option>
-                          <option value="Titular Compra">Titular Compra</option>
                           <option value="Otro">Otro</option>
                         </select>
                       </div>
@@ -2214,13 +2246,11 @@ const TicketsPage = () => {
                       )}
 
                       {/* Información adicional para casos de Titular */}
-                      {(printForm.quienRetira === 'Titular' || printForm.quienRetira === 'Titular Compra') && (
+                      {printForm.quienRetira === 'Titular' && (
                         <div className="alert alert-info">
                           <small>
                             <i className="fas fa-info-circle me-1"></i>
-                            {printForm.quienRetira === 'Titular'
-                              ? 'El titular del ticket retira personalmente'
-                              : 'El titular de la compra retira personalmente'}
+                            El titular del ticket retira personalmente
                           </small>
                         </div>
                       )}
@@ -2299,12 +2329,11 @@ const TicketsPage = () => {
 
                       <div className="card mb-3">
                         <div className="card-header">
-                          <strong>Tickets seleccionados:</strong>
+                          <strong>Tickets seleccionados ({selectedTickets.size}):</strong>
                         </div>
                         <div className="card-body" style={{ maxHeight: '200px', overflowY: 'auto' }}>
                           <div className="row">
-                            {tickets
-                              .filter(t => selectedTickets.has(t['Ticket ID']))
+                            {getSelectedTicketsFull()
                               .map(ticket => (
                                 <div key={ticket['Ticket ID']} className="col-md-6 mb-2">
                                   <div className="border rounded p-2">
@@ -2321,6 +2350,8 @@ const TicketsPage = () => {
                                           {ticket['Ticket']}
                                         </span>
                                       ) : ticket['Ticket']}
+                                      <br />
+                                      Last Four: {getLast4(ticket)}
                                     </small>
                                   </div>
                                 </div>
@@ -2347,7 +2378,6 @@ const TicketsPage = () => {
                         >
                           <option value="">Seleccione una opción</option>
                           <option value="Titular">Titular</option>
-                          <option value="Titular Compra">Titular Compra</option>
                           <option value="Otro">Otro</option>
                         </select>
                       </div>
@@ -2399,13 +2429,11 @@ const TicketsPage = () => {
                         </>
                       )}
 
-                      {(bulkCanjeForm.quienRetira === 'Titular' || bulkCanjeForm.quienRetira === 'Titular Compra') && (
+                      {bulkCanjeForm.quienRetira === 'Titular' && (
                         <div className="alert alert-info">
                           <small>
                             <i className="fas fa-info-circle me-1"></i>
-                            {bulkCanjeForm.quienRetira === 'Titular'
-                              ? 'El titular de los tickets retira personalmente'
-                              : 'El titular de la compra retira personalmente'}
+                            El titular de los tickets retira personalmente
                           </small>
                         </div>
                       )}

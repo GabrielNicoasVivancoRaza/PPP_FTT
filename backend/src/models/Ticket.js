@@ -61,6 +61,9 @@ const ticketSchema = new mongoose.Schema({
   // Campos del formulario de impresión/canje
   quienRetira: {
     type: String,
+    // "Titular Compra" ya no se ofrece en el formulario (se sacó de las
+    // opciones); se deja en el enum solo para no romper la validación de
+    // tickets viejos que ya lo tienen guardado
     enum: ['Titular', 'Titular Compra', 'Otro'],
     trim: true
   },
