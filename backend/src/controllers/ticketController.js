@@ -2,18 +2,12 @@ const Ticket = require('../models/Ticket');
 const AuditLog = require('../models/AuditLog');
 const PrinterSettings = require('../models/PrinterSettings');
 const { createOrExtendPrintRequest } = require('./printRequestController');
-const { getUnprintedTransactionTicketIds, markTransactionPrinted, emitTicketUpdates } = require('../utils/printHelpers');
+const { getUnprintedTransactionTicketIds, markTransactionPrinted, emitTicketUpdates, resolveColor } = require('../utils/printHelpers');
 const { propagateCanjeToTransaction } = require('../utils/canjeHelpers');
 const { isValidPhone, isValidName, isValidCedula } = require('../utils/validators');
 const { construirFilasTickets, filasACsv } = require('../utils/exportHelpers');
 const { buildGeneralSearchFilter } = require('../utils/searchHelpers');
 const { hasRole, hasAnyRole } = require('../utils/roles');
-
-// Resuelve el color configurado para un tipo de ticket (campo "Ticket")
-const resolveColor = (ticketColors, tipo) => {
-  const entry = ticketColors.find(tc => tc.tipo === tipo);
-  return entry ? entry.color : null;
-};
 
 // @desc    Obtener todos los tickets con filtros
 // @route   GET /api/tickets

@@ -15,6 +15,11 @@ const CAMPOS_DIRECTOS = [
   'Seat',
   'Transaction ID',
   'Transaction Date (Local)',
+  // Se usa esta (no la "(Local)") para el corte de "impreso hasta tal fecha
+  // y hora" al importar: viene en UTC, que en Ecuador (America/Guayaquil,
+  // sin horario de verano) son 5 horas MÁS que la hora local — 15:00 local
+  // es 20:00 en esta columna.
+  'Transaction Date (UTC)',
   'Barcode Data',
   'Ticket ID',
   'Last4/PayPal Email'

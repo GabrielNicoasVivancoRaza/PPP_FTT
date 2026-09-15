@@ -17,6 +17,7 @@ const auditRoutes = require('./routes/audit');
 const puntoVentaRoutes = require('./routes/puntoVentaRoutes');
 const printerSettingsRoutes = require('./routes/printerSettings');
 const printRequestRoutes = require('./routes/printRequests');
+const sobresRoutes = require('./routes/sobres');
 
 const app = express();
 const server = http.createServer(app);
@@ -115,6 +116,7 @@ app.use('/api/audit', auditRoutes);
 app.use('/api/puntos-venta', puntoVentaRoutes);
 app.use('/api/printer-settings', printerSettingsRoutes);
 app.use('/api/print-requests', printRequestRoutes);
+app.use('/api/sobres', sobresRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {

@@ -1,9 +1,24 @@
 const Ticket = require('../models/Ticket');
 const AuditLog = require('../models/AuditLog');
+const PrinterSettings = require('../models/PrinterSettings');
 const { parseCsvBuffer, mapRowToTicket } = require('../utils/csvImportHelpers');
-const { emitTicketUpdates } = require('../utils/printHelpers');
+const { emitTicketUpdates, getUnprintedTransactionTicketIds, resolveColor } = require('../utils/printHelpers');
+const { createOrExtendPrintRequest } = require('./printRequestController');
 const { CAMPOS_CEDULA } = require('../utils/searchHelpers');
 const { isValidCedula } = require('../utils/validators');
+
+// El datetime-local del formulario ("Impreso hasta") viene en hora de
+// Ecuador (America/Guayaquil, UTC-5, sin horario de verano), tal como lo
+// escribe el jefe/importador. Se ancla con ese offset fijo para convertirlo
+// a un instante UTC exacto, sin depender de en qué huso horario esté
+// corriendo el navegador o el servidor. La columna "Transaction Date (UTC)"
+// del CSV ya viene en UTC — son 5 horas MÁS que la hora local de Ecuador.
+const parseCorteLocalAUtc = (valor) => {
+  if (!valor) return null;
+  const conSegundos = valor.length === 16 ? `${valor}:00` : valor;
+  const fecha = new Date(`${conSegundos}-05:00`);
+  return isNaN(fecha.getTime()) ? null : fecha;
+};
 
 // SquadUp a veces solo exporta cierto dato (cédula, medio de pago) UNA sola
 // vez por Transaction ID (en la primera fila de esa compra), dejando el
@@ -383,6 +398,46 @@ const importCsv = async (req, res) => {
 
     const last4Completados = last4CompletadosNuevos + ticketsConLast4Completado.length;
 
+    // --- Encolar para impresión los tickets comprados DESPUÉS del último
+    // corte de impresión física ---
+    // El jefe imprime los boletos por tandas hasta cierta fecha y hora; lo
+    // que se vendió después de esa tanda todavía no tiene impresión física,
+    // así que en vez de asumir que ya están impresos, se marcan pendientes y
+    // se encolan para el rol impresor_cola (misma cola que ya usa el canje
+    // de staff).
+    let ticketsEncoladosImpresion = 0;
+    const corteImpresionUtc = parseCorteLocalAUtc(req.body.impresoHasta);
+    if (corteImpresionUtc && nuevos.length > 0) {
+      const printerSettings = await PrinterSettings.getSettings();
+      if (printerSettings.enabled) {
+        const grupos = new Map(); // "transactionId||tipo" -> { transactionId, tipo }
+        for (const doc of nuevos) {
+          const fechaUtc = new Date(doc['Transaction Date (UTC)']);
+          if (isNaN(fechaUtc.getTime()) || fechaUtc <= corteImpresionUtc) continue;
+          const transactionId = doc['Transaction ID'];
+          const tipo = doc['Ticket'];
+          grupos.set(`${transactionId}||${tipo}`, { transactionId, tipo });
+        }
+
+        const io = req.app.get('io');
+        for (const { transactionId, tipo } of grupos.values()) {
+          const ticketIdsTransaccion = await getUnprintedTransactionTicketIds(TicketModel, transactionId, tipo);
+          if (ticketIdsTransaccion.length > 0) {
+            await createOrExtendPrintRequest({
+              transactionId,
+              ticketIds: ticketIdsTransaccion,
+              tipos: tipo ? [tipo] : [],
+              color: resolveColor(printerSettings.ticketColors, tipo),
+              puntoTrabajo: req.user.puntoTrabajo,
+              usuarioId: req.user._id,
+              io
+            });
+            ticketsEncoladosImpresion += ticketIdsTransaccion.length;
+          }
+        }
+      }
+    }
+
     // --- Detección de tickets eliminados del evento ---
     // Todo ticket que esté en la base pero YA NO venga en el CSV significa
     // que se anuló/reembolsó en SquadUp. No se borra: se marca como
@@ -437,7 +492,8 @@ const importCsv = async (req, res) => {
       eliminadosYaCanjeados: eliminadosTrasCanje.length,
       cedulasCompletadas,
       last4Completados,
-      ticketsCanjeadosPorTransaccionManual
+      ticketsCanjeadosPorTransaccionManual,
+      ticketsEncoladosImpresion
     };
 
     try {
@@ -518,6 +574,9 @@ const importCsv = async (req, res) => {
     }
     if (last4Completados > 0) {
       message += ` ${last4Completados} medio(s) de pago completado(s) automáticamente (dejaron de figurar como "Cash" sin serlo).`;
+    }
+    if (ticketsEncoladosImpresion > 0) {
+      message += ` ${ticketsEncoladosImpresion} ticket(s) comprados después del corte de impresión se encolaron para el impresor.`;
     }
     if (idsDesaparecidos.length > 0) {
       message += ` ${idsDesaparecidos.length} ya no están en el archivo y se marcaron como eliminados`;
@@ -665,6 +724,30 @@ const crearTicketManual = async (req, res) => {
 
     const io = req.app.get('io');
     emitTicketUpdates(io, [creado], 'ticket-manual');
+
+    // Encolar para impresión (mismo mecanismo que usa el canje de staff): un
+    // ticket agregado a mano nunca pasó por ninguna tanda de impresión
+    // física previa, así que siempre hace falta imprimirlo por la cola.
+    try {
+      const printerSettings = await PrinterSettings.getSettings();
+      if (printerSettings.enabled) {
+        const tipo = doc['Ticket'];
+        const ticketIdsTransaccion = await getUnprintedTransactionTicketIds(TicketModel, doc['Transaction ID'], tipo);
+        if (ticketIdsTransaccion.length > 0) {
+          await createOrExtendPrintRequest({
+            transactionId: doc['Transaction ID'],
+            ticketIds: ticketIdsTransaccion,
+            tipos: tipo ? [tipo] : [],
+            color: resolveColor(printerSettings.ticketColors, tipo),
+            puntoTrabajo: req.user.puntoTrabajo,
+            usuarioId: req.user._id,
+            io
+          });
+        }
+      }
+    } catch (printError) {
+      console.error('Error al encolar impresión del ticket manual:', printError);
+    }
 
     try {
       await AuditLog.create({

@@ -38,3 +38,17 @@ export const getNombreCompleto = (ticket) => {
   if (!ticket) return '';
   return `${ticket['First Name'] || ''} ${ticket['Last Name'] || ''}`.trim();
 };
+
+/**
+ * Mismo criterio de normalización que usa el backend para el archivo de
+ * sobres (backend/src/utils/nombreHelpers.js): mayúsculas, sin tildes, sin
+ * espacios de más. Tiene que coincidir exacto para poder usar esta clave y
+ * leer la respuesta de sobresService.buscar().
+ */
+export const normalizarNombreParaSobre = (texto) =>
+  String(texto || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toUpperCase()
+    .trim()
+    .replace(/\s+/g, ' ');

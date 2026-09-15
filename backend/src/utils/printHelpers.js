@@ -66,4 +66,13 @@ const emitTicketUpdates = (io, tickets, action) => {
   });
 };
 
-module.exports = { getUnprintedTransactionTicketIds, markTransactionPrinted, emitTicketUpdates };
+// Resuelve el color configurado para un tipo de ticket (campo "Ticket").
+// Vive acá (no en un controller) porque tanto el canje (ticketController)
+// como la importación de CSV y el alta manual (importController) necesitan
+// armar solicitudes de impresión con el mismo color.
+const resolveColor = (ticketColors, tipo) => {
+  const entry = ticketColors.find(tc => tc.tipo === tipo);
+  return entry ? entry.color : null;
+};
+
+module.exports = { getUnprintedTransactionTicketIds, markTransactionPrinted, emitTicketUpdates, resolveColor };

@@ -3,9 +3,9 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import socketService from '../services/socket';
-import { printerSettingsService, ticketService } from '../services';
+import { printerSettingsService, ticketService, sobresService } from '../services';
 import { useScanSession } from '../context/ScanSessionContext';
-import { getCedula, getLast4 } from '../utils/ticketFields';
+import { getCedula, getLast4, getNombreCompleto, normalizarNombreParaSobre } from '../utils/ticketFields';
 import { onlyDigits, onlyLetters, onlyAlphanumeric, isValidPhone, isValidName, isValidCedula } from '../utils/validators';
 import { hasRole, hasAnyRole, getRoles } from '../utils/roles';
 import Swal from 'sweetalert2';
@@ -49,6 +49,10 @@ const TicketsPage = () => {
   });
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState(null);
+  // Posible sobre físico donde está el boleto impreso (viene de un archivo
+  // aparte, subido en Importar CSV; no todos los tickets van a tener uno)
+  const [sobreInfo, setSobreInfo] = useState(null);
+  const [sobresBulk, setSobresBulk] = useState({}); // { nombreNormalizado: { nombre, sobres } }
   // Otros tickets de la misma Transaction ID y cuáles eligió el usuario
   // para completarlos con la misma información de canje
   const [ticketsTransaccion, setTicketsTransaccion] = useState([]);
@@ -714,11 +718,43 @@ const TicketsPage = () => {
     );
   };
 
+  // Busca el/los posible(s) sobre(s) donde está el boleto impreso de un
+  // ticket, por nombre (no siempre hay resultado: el archivo de sobres es
+  // opcional y no cubre a todo el mundo)
+  const fetchSobreParaTicket = async (ticket) => {
+    setSobreInfo(null);
+    const nombreCompleto = getNombreCompleto(ticket);
+    if (!nombreCompleto) return;
+    try {
+      const response = await sobresService.buscar([nombreCompleto]);
+      if (response.success) {
+        const resultados = Object.values(response.data);
+        setSobreInfo(resultados[0] || null);
+      }
+    } catch (error) {
+      console.error('Error al buscar sobre:', error);
+    }
+  };
+
+  // Igual, pero para varios tickets a la vez (vista previa del canje masivo)
+  const fetchSobresBulk = async (ticketsList) => {
+    setSobresBulk({});
+    const nombres = ticketsList.map(t => getNombreCompleto(t)).filter(Boolean);
+    if (nombres.length === 0) return;
+    try {
+      const response = await sobresService.buscar(nombres);
+      if (response.success) setSobresBulk(response.data);
+    } catch (error) {
+      console.error('Error al buscar sobres:', error);
+    }
+  };
+
   const handlePrint = (ticket) => {
     // Abrir modal para realizar canje
     setSelectedTicket(ticket);
     setShowPrintModal(true);
     fetchTicketsDeTransaccion(ticket);
+    fetchSobreParaTicket(ticket);
   };
 
   const handleSendToPrint = async (ticket) => {
@@ -726,6 +762,7 @@ const TicketsPage = () => {
     setSelectedTicket(ticket);
     setShowPrintModal(true);
     fetchTicketsDeTransaccion(ticket);
+    fetchSobreParaTicket(ticket);
   };
 
   // Si venimos de /escanearTicket con un ticket encontrado, abrir directo el
@@ -995,6 +1032,7 @@ const TicketsPage = () => {
       return;
     }
     setShowBulkCanjeModal(true);
+    fetchSobresBulk(getSelectedTicketsFull());
   };
 
   // Colocar / quitar la nota informativa en todos los tickets seleccionados
@@ -1291,7 +1329,8 @@ const TicketsPage = () => {
   // transacción sí se imprimió), por eso 'impreso' y 'canjeado' se evalúan
   // de forma independiente.
   // 'completed' (verde) = canjeado + impreso (o impresión no activa)
-  // 'pending' (amarillo) = canjeado, esperando impresión por la cola
+  // 'sinImprimir' (amarillo) = todavía no está impreso (canjeado o no) — con
+  // la impresión por cola activa, esto es lo que hace falta mandar a imprimir
   // 'printed' (azul) = impreso pero aún no canjeado individualmente
   const getTicketPrintStatus = (ticket) => {
     // Fraude y eliminado mandan sobre cualquier otro estado: son bloqueos
@@ -1301,7 +1340,9 @@ const TicketsPage = () => {
     // para que todos la vean mientras esté colocada
     if (ticket.informacion) return 'informacion';
     if (ticket.canjeado && (ticket.impreso || !printerEnabled)) return 'completed';
-    if (ticket.canjeado) return 'pending';
+    // Solo se marca "falta imprimir" con la impresión por cola activa: si
+    // está apagada, el campo "impreso" no se usa para nada operativamente
+    if (printerEnabled && !ticket.impreso) return 'sinImprimir';
     if (ticket.impreso) return 'printed';
     return 'normal';
   };
@@ -1314,8 +1355,8 @@ const TicketsPage = () => {
         return 'table-danger'; // Rojo: fraude o eliminado del evento
       case 'informacion':
         return 'table-secondary'; // Gris: nota informativa del jefe
-      case 'pending':
-        return 'table-warning'; // Amarillo: canjeado, esperando impresión
+      case 'sinImprimir':
+        return 'table-warning'; // Amarillo: todavía no está impreso
       case 'completed':
         return 'table-success'; // Verde: canjeado (e impreso, si aplica)
       case 'printed':
@@ -1819,6 +1860,11 @@ const TicketsPage = () => {
                                       <i className="fas fa-circle-info me-1"></i>{ticket.informacion}
                                     </div>
                                   )}
+                                  {getTicketPrintStatus(ticket) === 'sinImprimir' && (
+                                    <div className="text-warning-emphasis fw-semibold" style={{ fontSize: '0.75em', marginBottom: '4px' }}>
+                                      <i className="fas fa-triangle-exclamation me-1"></i>Debe imprimir
+                                    </div>
+                                  )}
                                   {ticket.fraude ? (
                                     <span className="text-danger fw-semibold" style={{ fontSize: '0.8em' }}>
                                       Canje bloqueado
@@ -2132,6 +2178,13 @@ const TicketsPage = () => {
                         <br />
                         <strong>Cédula:</strong> {getCedula(selectedTicket) || '-'}<br />
                         <strong>Pago:</strong> {getLast4(selectedTicket)}
+                        {sobreInfo && sobreInfo.sobres.length > 0 && (
+                          <>
+                            <br />
+                            <strong>Posible sobre:</strong>{' '}
+                            <span className="badge bg-secondary">{sobreInfo.sobres.join(' / ')}</span>
+                          </>
+                        )}
                       </div>
 
                       {ticketsTransaccion.length > 0 && (
@@ -2352,6 +2405,12 @@ const TicketsPage = () => {
                                       ) : ticket['Ticket']}
                                       <br />
                                       Last Four: {getLast4(ticket)}
+                                      {(() => {
+                                        const info = sobresBulk[normalizarNombreParaSobre(getNombreCompleto(ticket))];
+                                        return info && info.sobres.length > 0 ? (
+                                          <><br />Posible sobre: <strong>{info.sobres.join(' / ')}</strong></>
+                                        ) : null;
+                                      })()}
                                     </small>
                                   </div>
                                 </div>

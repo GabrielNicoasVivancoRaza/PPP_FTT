@@ -1,6 +1,6 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { ticketService } from '../services';
+import { ticketService, sobresService } from '../services';
 import Swal from 'sweetalert2';
 import { hasAnyRole } from '../utils/roles';
 import 'bootstrap/dist/css/bootstrap.min.css';
@@ -10,9 +10,35 @@ const ROLES_PERMITIDOS = ['jefe', 'importador'];
 const ImportCsvPage = () => {
   const { user } = useAuth();
   const [archivo, setArchivo] = useState(null);
+  const [impresoHasta, setImpresoHasta] = useState('');
   const [subiendo, setSubiendo] = useState(false);
   const [ultimoResultado, setUltimoResultado] = useState(null);
   const inputRef = useRef(null);
+
+  // Importar sobres (ubicación física de los boletos impresos, por nombre)
+  const [archivoSobres, setArchivoSobres] = useState(null);
+  const [subiendoSobres, setSubiendoSobres] = useState(false);
+  const [resumenSobres, setResumenSobres] = useState(null);
+  const [cargandoResumenSobres, setCargandoResumenSobres] = useState(true);
+  const inputSobresRef = useRef(null);
+
+  const cargarResumenSobres = useCallback(async () => {
+    try {
+      setCargandoResumenSobres(true);
+      const response = await sobresService.getResumen();
+      if (response.success) {
+        setResumenSobres(response.data);
+      }
+    } catch (error) {
+      console.error('Error al obtener resumen de sobres:', error);
+    } finally {
+      setCargandoResumenSobres(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    cargarResumenSobres();
+  }, [cargarResumenSobres]);
 
   if (!hasAnyRole(user, ROLES_PERMITIDOS)) {
     return (
@@ -42,13 +68,16 @@ const ImportCsvPage = () => {
 
     try {
       setSubiendo(true);
-      const response = await ticketService.importCsv(archivo);
+      const response = await ticketService.importCsv(archivo, impresoHasta);
       if (response.success) {
         setUltimoResultado(response.data);
         setArchivo(null);
         if (inputRef.current) inputRef.current.value = '';
 
-        const { nuevosAgregados, yaExistian, reconciliados = 0, eliminados = 0, eliminadosYaCanjeados = 0, cedulasCompletadas = 0 } = response.data;
+        const {
+          nuevosAgregados, yaExistian, reconciliados = 0, eliminados = 0, eliminadosYaCanjeados = 0,
+          cedulasCompletadas = 0, ticketsEncoladosImpresion = 0
+        } = response.data;
 
         let html = `<strong>${nuevosAgregados}</strong> ticket(s) nuevo(s) agregado(s)<br/>` +
                    `${yaExistian} ya existían (sin modificar)`;
@@ -57,6 +86,9 @@ const ImportCsvPage = () => {
         }
         if (cedulasCompletadas > 0) {
           html += `<br/><strong>${cedulasCompletadas}</strong> cédula(s) completada(s) automáticamente (misma Transaction ID)`;
+        }
+        if (ticketsEncoladosImpresion > 0) {
+          html += `<br/><strong>${ticketsEncoladosImpresion}</strong> ticket(s) comprados después del corte se encolaron para el impresor`;
         }
         if (eliminados > 0) {
           html += `<br/><span class="text-danger"><strong>${eliminados}</strong> ya no están en el archivo y se marcaron como eliminados</span>`;
@@ -97,6 +129,53 @@ const ImportCsvPage = () => {
     }
   };
 
+  const handleFileChangeSobres = (e) => {
+    const file = e.target.files?.[0];
+    if (file && !file.name.toLowerCase().endsWith('.csv')) {
+      Swal.fire('Archivo inválido', 'Debe seleccionar un archivo .csv', 'warning');
+      e.target.value = '';
+      setArchivoSobres(null);
+      return;
+    }
+    setArchivoSobres(file || null);
+  };
+
+  const handleSubmitSobres = async (e) => {
+    e.preventDefault();
+    if (!archivoSobres) {
+      Swal.fire('Falta el archivo', 'Seleccione el CSV de sobres antes de subir', 'warning');
+      return;
+    }
+
+    const result = await Swal.fire({
+      title: '¿Reemplazar información de sobres?',
+      text: 'Esto borra toda la información de sobres cargada anteriormente y la reemplaza por la de este archivo.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, reemplazar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#dc3545',
+      reverseButtons: true
+    });
+    if (!result.isConfirmed) return;
+
+    try {
+      setSubiendoSobres(true);
+      const response = await sobresService.importar(archivoSobres);
+      if (response.success) {
+        setArchivoSobres(null);
+        if (inputSobresRef.current) inputSobresRef.current.value = '';
+        Swal.fire({ title: 'Sobres actualizados', text: response.message, icon: 'success' });
+        cargarResumenSobres();
+      }
+    } catch (error) {
+      console.error('Error al importar sobres:', error);
+      Swal.fire('Error', error.response?.data?.message || 'No se pudo importar el archivo', 'error');
+    } finally {
+      setSubiendoSobres(false);
+    }
+  };
+
   return (
     <div className="container-fluid">
       <div className="mb-4">
@@ -123,6 +202,24 @@ const ImportCsvPage = () => {
                     disabled={subiendo}
                   />
                 </div>
+
+                <div className="mb-3">
+                  <label className="form-label">Impreso hasta (opcional)</label>
+                  <input
+                    type="datetime-local"
+                    className="form-control"
+                    value={impresoHasta}
+                    onChange={(e) => setImpresoHasta(e.target.value)}
+                    disabled={subiendo}
+                  />
+                  <small className="form-text text-muted">
+                    Hora local de Ecuador hasta la que ya imprimiste físicamente los boletos. Los
+                    tickets nuevos comprados después de esa hora quedan marcados como pendientes de
+                    imprimir y se encolan automáticamente para el impresor (cola de impresión). Si
+                    no aplica, dejalo vacío.
+                  </small>
+                </div>
+
                 <button type="submit" className="btn btn-primary w-100" disabled={subiendo || !archivo}>
                   {subiendo ? (
                     <>
@@ -169,6 +266,12 @@ const ImportCsvPage = () => {
                       cédulas completadas automáticamente (misma Transaction ID)
                     </li>
                   )}
+                  {ultimoResultado.ticketsEncoladosImpresion > 0 && (
+                    <li className="mb-2">
+                      <span className="badge bg-warning text-dark me-2">{ultimoResultado.ticketsEncoladosImpresion}</span>
+                      comprados después del corte, encolados para el impresor
+                    </li>
+                  )}
                   {ultimoResultado.omitidosPorDatosIncompletos > 0 && (
                     <li className="mb-2">
                       <span className="badge bg-warning text-dark me-2">{ultimoResultado.omitidosPorDatosIncompletos}</span>
@@ -206,6 +309,89 @@ const ImportCsvPage = () => {
               Aquí aparecerá el resumen después de subir un archivo.
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Importar sobres: ubicación física de los boletos impresos, ordenados
+          por nombre (proceso externo, ajeno a esta app). Se usa al momento
+          de canjear para saber en qué sobre buscar el boleto. */}
+      <div className="row g-4 mt-1">
+        <div className="col-md-6">
+          <div className="card">
+            <div className="card-header">
+              <strong>Importar Sobres (ubicación física)</strong>
+            </div>
+            <div className="card-body">
+              <p className="text-muted small">
+                CSV con las columnas <code>sobre</code>, <code>numero_boleto</code>,{' '}
+                <code>posicion_original</code> y <code>nombre</code>. Cada importación{' '}
+                <strong>reemplaza toda</strong> la información anterior — no se mezcla con
+                una subida vieja, porque el reordenamiento puede cambiar de una tanda a otra.
+                El emparejamiento con los tickets es por nombre, así que no todos los
+                tickets van a tener un sobre asignado.
+              </p>
+              <form onSubmit={handleSubmitSobres}>
+                <div className="mb-3">
+                  <input
+                    ref={inputSobresRef}
+                    type="file"
+                    accept=".csv"
+                    className="form-control"
+                    onChange={handleFileChangeSobres}
+                    disabled={subiendoSobres}
+                  />
+                </div>
+                <button type="submit" className="btn btn-outline-primary w-100" disabled={subiendoSobres || !archivoSobres}>
+                  {subiendoSobres ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm me-2" role="status"></span>
+                      Importando...
+                    </>
+                  ) : (
+                    <>
+                      <i className="fas fa-upload me-2"></i>Subir y reemplazar
+                    </>
+                  )}
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <div className="col-md-6">
+          <div className="card">
+            <div className="card-header">
+              <strong>Información de sobres cargada</strong>
+            </div>
+            <div className="card-body">
+              {cargandoResumenSobres ? (
+                <div className="d-flex justify-content-center py-3">
+                  <div className="spinner-border spinner-border-sm" role="status"></div>
+                </div>
+              ) : !resumenSobres || resumenSobres.totalFilas === 0 ? (
+                <div className="alert alert-secondary mb-0">
+                  Todavía no se subió ningún archivo de sobres.
+                </div>
+              ) : (
+                <ul className="list-unstyled mb-0">
+                  <li className="mb-2">
+                    <span className="badge bg-primary me-2">{resumenSobres.totalFilas}</span>
+                    fila(s) cargadas
+                  </li>
+                  <li className="mb-2">
+                    <span className="badge bg-primary me-2">{resumenSobres.nombresDistintos}</span>
+                    persona(s) distintas
+                  </li>
+                  {resumenSobres.ultimaImportacion && (
+                    <li className="text-muted small">
+                      Última importación: {new Date(resumenSobres.ultimaImportacion.fecha).toLocaleString('es-ES')}
+                      {resumenSobres.ultimaImportacion.usuario && ` — ${resumenSobres.ultimaImportacion.usuario}`}
+                    </li>
+                  )}
+                </ul>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>

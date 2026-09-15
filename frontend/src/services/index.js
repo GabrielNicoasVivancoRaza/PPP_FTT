@@ -161,15 +161,47 @@ export const ticketService = {
   // de miles de filas el backend puede tardar bastante más que el timeout
   // global de la instancia de axios (10s) — acá se le da varios minutos
   // para que no se corte la conexión mientras el servidor sigue trabajando.
-  importCsv: async (file) => {
+  // impresoHasta (opcional): datetime-local en hora de Ecuador. Los tickets
+  // cuya "Transaction Date (UTC)" sea posterior quedan marcados pendientes
+  // de imprimir y se encolan automáticamente para el impresor.
+  importCsv: async (file, impresoHasta) => {
     const formData = new FormData();
     formData.append('csv', file);
+    if (impresoHasta) formData.append('impresoHasta', impresoHasta);
     const response = await api.post('/tickets/import-csv', formData, {
       // Se borra el Content-Type por defecto (application/json) para que el
       // navegador arme el multipart/form-data con el boundary correcto
       headers: { 'Content-Type': undefined },
       timeout: 5 * 60 * 1000 // 5 minutos
     });
+    return response.data;
+  }
+};
+
+// Ubicación de sobres (proceso externo que ordena los boletos físicos
+// impresos por nombre). El join con los tickets es por nombre, no hay ID
+// en común.
+export const sobresService = {
+  // Reemplaza TODA la información de sobres anterior por la del archivo nuevo
+  importar: async (file) => {
+    const formData = new FormData();
+    formData.append('csv', file);
+    const response = await api.post('/sobres/import', formData, {
+      headers: { 'Content-Type': undefined },
+      timeout: 5 * 60 * 1000
+    });
+    return response.data;
+  },
+
+  // nombres: array de nombres completos ("First Last") a buscar. Devuelve
+  // { [nombreNormalizado]: { nombre, sobres: [...] } }
+  buscar: async (nombres) => {
+    const response = await api.post('/sobres/buscar', { nombres });
+    return response.data;
+  },
+
+  getResumen: async () => {
+    const response = await api.get('/sobres/resumen');
     return response.data;
   }
 };
