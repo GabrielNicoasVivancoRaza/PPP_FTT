@@ -1,7 +1,7 @@
 services:
   # Backend Service
   - type: web
-    name: romeo-backend-uio
+    name: romeo-backend-gye
     env: node
     region: oregon
     plan: free
@@ -20,11 +20,11 @@ services:
       - key: DEFAULT_PASSWORD
         value: FTT2025
       - key: CORS_ORIGIN
-        value: https://canje-ftt-romeo-uio.onrender.com
+        value: https://canje-ftt-romeo-gye.onrender.com
 
   # Frontend Service  
   - type: web
-    name: canje-ftt-romeo-uio
+    name: canje-ftt-romeo-gye
     env: static
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
@@ -42,10 +42,10 @@ services:
     routes:
       - type: rewrite
         source: /api/*
-        destination: https://romeo-backend-uio.onrender.com/api/:splat
+        destination: https://romeo-backend-gye.onrender.com/api/:splat
       - type: rewrite
         source: /*
         destination: /index.html
     envVars:
       - key: VITE_API_URL
-        value: https://romeo-backend-uio.onrender.com
+        value: https://romeo-backend-gye.onrender.com
