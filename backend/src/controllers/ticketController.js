@@ -953,12 +953,16 @@ const canjeTicket = async (req, res) => {
     const io = req.app.get('io');
     let ticketsImpresosTransaccion = 0;
 
-    // Rol staff: encolar solicitud de impresión para impresor_cola con TODOS
-    // los tickets de la transacción + tipo (no solo el que se acaba de
-    // canjear), ya que se imprimen todos juntos. Se hace ANTES de propagar
-    // el canje (abajo) para que esa propagación ya vea "pendienteImpresion"
-    // actualizado al recargar los tickets de la transacción.
-    if (printerSettings.enabled && hasRole(req.user, 'staff')) {
+    // Encolar solicitud de impresión para impresor_cola con TODOS los
+    // tickets de la transacción + tipo (no solo el que se acaba de canjear),
+    // ya que se imprimen todos juntos. Aplica a cualquiera que canjee y NO
+    // imprima directo en el mismo acto (impresor_solo ya lo hace arriba) —
+    // el canje lo puede hacer staff O jefe (ver authorize() de la ruta), así
+    // que no se puede filtrar solo por "staff" o el canje de jefe nunca
+    // encola nada. Se hace ANTES de propagar el canje (abajo) para que esa
+    // propagación ya vea "pendienteImpresion" actualizado al recargar los
+    // tickets de la transacción.
+    if (printerSettings.enabled && !hasRole(req.user, 'impresor_solo')) {
       const tipo = ticket['Ticket'];
       const ticketIdsTransaccion = await getUnprintedTransactionTicketIds(TicketModel, ticket['Transaction ID'], tipo);
       // Si no queda nada por imprimir (p. ej. otro impresor ya imprimió toda
@@ -1387,10 +1391,13 @@ const bulkCanjeTickets = async (req, res) => {
       }
     }
 
-    // Rol staff: encolar solicitudes de impresión (una por transacción + tipo)
-    // con TODOS los tickets de esa transacción/tipo, no solo los canjeados
-    // en este lote, ya que se imprimen todos juntos
-    if (printerSettings.enabled && hasRole(req.user, 'staff')) {
+    // Encolar solicitudes de impresión (una por transacción + tipo) con
+    // TODOS los tickets de esa transacción/tipo, no solo los canjeados en
+    // este lote, ya que se imprimen todos juntos. Aplica a cualquiera que
+    // canjee y NO imprima directo en el mismo acto (impresor_solo ya lo hizo
+    // arriba) — el canje masivo lo puede hacer staff O jefe (ver authorize()
+    // de la ruta), así que no se puede filtrar solo por "staff".
+    if (printerSettings.enabled && !hasRole(req.user, 'impresor_solo')) {
       const paresUnicos = new Map();
       ticketsToRedeem.forEach(ticket => {
         const key = `${ticket['Transaction ID']}||${ticket['Ticket']}`;
