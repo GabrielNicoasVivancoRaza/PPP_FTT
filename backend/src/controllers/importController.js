@@ -424,23 +424,31 @@ const importCsv = async (req, res) => {
 
     const last4Completados = last4CompletadosNuevos + ticketsConLast4Completado.length;
 
-    // --- Contar (informativo) los tickets comprados DESPUÉS del último
+    // --- Marcar (solo visualmente) los tickets comprados DESPUÉS del último
     // corte de impresión física ---
     // El jefe imprime los boletos por tandas hasta cierta fecha y hora; lo
-    // que se vendió después de esa tanda todavía no tiene impresión física.
-    // OJO: esto es solo informativo, NO se encolan para impresión acá. La
-    // solicitud de impresión (y el resaltado amarillo "Debe imprimir") se
-    // genera únicamente cuando alguien de staff canjea ese ticket y completa
-    // el formulario de canje (mismo mecanismo de siempre) — no de una al
-    // importar, para no llenar la cola de impresores con tickets que nadie
-    // ha retirado todavía.
+    // que se vendió después de esa tanda todavía no tiene impresión física,
+    // así que se marca "pendienteImpresion" para que se vean en amarillo
+    // ("Debe imprimir") en la tabla y el jefe sepa cuáles faltan.
+    // OJO: esto NO crea ninguna solicitud en la cola del impresor — esa cola
+    // (lo que realmente ve/procesa el rol impresor_cola) se arma únicamente
+    // cuando alguien de staff canjea ese ticket y completa el formulario de
+    // canje (mismo mecanismo de siempre), no de una al importar.
     let ticketsSinImprimirFisicamente = 0;
     const corteImpresionUtc = parseCorteLocalAUtc(req.body.impresoHasta);
     if (corteImpresionUtc && nuevos.length > 0) {
+      const ticketIdsSinImprimir = [];
       for (const doc of nuevos) {
         const fechaUtc = parseTransactionDateUtc(doc['Transaction Date (UTC)']);
         if (!fechaUtc || fechaUtc <= corteImpresionUtc) continue;
-        ticketsSinImprimirFisicamente += 1;
+        ticketIdsSinImprimir.push(doc['Ticket ID']);
+      }
+      if (ticketIdsSinImprimir.length > 0) {
+        await TicketModel.collection.updateMany(
+          { 'Ticket ID': { $in: ticketIdsSinImprimir } },
+          { $set: { pendienteImpresion: true } }
+        );
+        ticketsSinImprimirFisicamente = ticketIdsSinImprimir.length;
       }
     }
 
