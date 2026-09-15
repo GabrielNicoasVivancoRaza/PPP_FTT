@@ -13,8 +13,9 @@ const ticketSchema = new mongoose.Schema({
     trim: true
   },
   'Email': {
+    // No es obligatorio: un ticket agregado a mano puede no tenerlo
+    // todavía (se completa solo al reconciliar con el CSV real)
     type: String,
-    required: true,
     lowercase: true,
     trim: true
   },

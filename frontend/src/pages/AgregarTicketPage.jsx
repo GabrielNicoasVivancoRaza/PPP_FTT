@@ -9,6 +9,11 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 
 const ROLES_PERMITIDOS = ['jefe', 'importador'];
 
+// Mismo texto que usa el backend cuando se crea un ticket sin localidad
+// (backend/src/controllers/importController.js) — se usa para no mostrar
+// ese placeholder como si fuera una localidad real al editar
+const LOCALIDAD_PENDIENTE = 'Sin localidad (pendiente)';
+
 const FORM_VACIO = {
   nombre: '',
   localidad: '',
@@ -157,7 +162,7 @@ const AgregarTicketPage = () => {
     setEditando(ticket['Ticket ID']);
     setForm({
       nombre: `${ticket['First Name'] || ''} ${ticket['Last Name'] || ''}`.trim(),
-      localidad: ticket['Ticket'] || '',
+      localidad: ticket['Ticket'] === LOCALIDAD_PENDIENTE ? '' : (ticket['Ticket'] || ''),
       cedula: ticket['Numero de Cedula:'] || '',
       email: ticket['Email'] || '',
       transactionId: ticket['Transaction ID'] || ''
@@ -197,12 +202,14 @@ const AgregarTicketPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    const faltantes = Object.entries(form)
-      .filter(([, valor]) => !String(valor).trim())
-      .map(([campo]) => campo);
+    // Localidad y email son opcionales: se completan solos al reconciliar
+    // con el CSV real. Lo único obligatorio es lo que hace falta para
+    // identificar y reconciliar la transacción: nombre, cédula y Transaction ID.
+    const CAMPOS_OBLIGATORIOS = ['nombre', 'cedula', 'transactionId'];
+    const faltantes = CAMPOS_OBLIGATORIOS.filter(campo => !String(form[campo]).trim());
 
     if (faltantes.length > 0) {
-      Swal.fire('Falta información', 'Todos los campos son obligatorios', 'warning');
+      Swal.fire('Falta información', 'Nombre, cédula y Transaction ID son obligatorios', 'warning');
       return;
     }
 
@@ -249,9 +256,11 @@ const AgregarTicketPage = () => {
       <div className="alert alert-info">
         <i className="fas fa-circle-info me-2"></i>
         Cuando más adelante se suba el CSV oficial, si trae una fila con la <strong>misma
-        Transaction ID y el mismo Email</strong>, este ticket se completa automáticamente con los
-        datos reales (Ticket ID, asiento, código de barras) — no se duplica ni se marca como
-        eliminado por no tener el ID original de SquadUp.
+        Transaction ID y la misma cédula</strong>, este ticket se completa automáticamente con los
+        datos reales (Ticket ID, asiento, código de barras, email) — no se duplica ni se marca
+        como eliminado por no tener el ID original de SquadUp. Por eso <strong>Localidad y Email
+        son opcionales</strong>: si no los sabés en el momento, quedan pendientes y se completan
+        solos al reconciliar.
       </div>
 
       <div className="row g-4">
@@ -284,7 +293,7 @@ const AgregarTicketPage = () => {
                 </div>
 
                 <div className="mb-3">
-                  <label className="form-label">Localidad *</label>
+                  <label className="form-label">Localidad (opcional)</label>
                   <select
                     className="form-select"
                     value={form.localidad}
@@ -292,7 +301,7 @@ const AgregarTicketPage = () => {
                     disabled={guardando || cargandoLocalidades}
                   >
                     <option value="">
-                      {cargandoLocalidades ? 'Cargando localidades...' : 'Seleccione una localidad'}
+                      {cargandoLocalidades ? 'Cargando localidades...' : 'Sin especificar (se completa al reconciliar)'}
                     </option>
                     {localidades.map(loc => (
                       <option key={loc} value={loc}>{loc}</option>
@@ -303,11 +312,9 @@ const AgregarTicketPage = () => {
                       <option value={form.localidad}>{form.localidad}</option>
                     )}
                   </select>
-                  {!cargandoLocalidades && localidades.length === 0 && (
-                    <small className="form-text text-warning">
-                      No se detectaron localidades. Importe primero el CSV del evento.
-                    </small>
-                  )}
+                  <small className="form-text text-muted">
+                    Si no la sabés, dejala así — se completa sola cuando se suba el CSV.
+                  </small>
                 </div>
 
                 <div className="mb-3">
@@ -320,10 +327,14 @@ const AgregarTicketPage = () => {
                     placeholder="Cédula, RUC o pasaporte"
                     disabled={guardando}
                   />
+                  <small className="form-text text-muted">
+                    Verificala contra el documento de identidad: junto con la Transaction ID, es lo
+                    que se usa para emparejar este ticket con el CSV real.
+                  </small>
                 </div>
 
                 <div className="mb-3">
-                  <label className="form-label">Email *</label>
+                  <label className="form-label">Email (opcional)</label>
                   <input
                     type="email"
                     className="form-control"
@@ -520,7 +531,13 @@ const AgregarTicketPage = () => {
                   {manualesFiltrados.map(ticket => (
                     <tr key={ticket['Ticket ID']}>
                       <td>{`${ticket['First Name'] || ''} ${ticket['Last Name'] || ''}`.trim()}</td>
-                      <td>{ticket['Ticket']}</td>
+                      <td>
+                        {ticket['Ticket'] === LOCALIDAD_PENDIENTE ? (
+                          <span className="text-muted fst-italic">Pendiente</span>
+                        ) : (
+                          ticket['Ticket']
+                        )}
+                      </td>
                       <td>{ticket['Numero de Cedula:']}</td>
                       <td>{ticket['Email']}</td>
                       <td><code>{ticket['Transaction ID']}</code></td>

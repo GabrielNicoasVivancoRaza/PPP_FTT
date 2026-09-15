@@ -119,12 +119,15 @@ const importCsv = async (req, res) => {
     // --- Reconciliar con tickets creados a mano ("Agregar Ticket") ---
     // Un ticket manual nace con un Ticket ID sintético (MANUAL-...), no con
     // el real de SquadUp. Si el CSV trae la fila real de esa misma persona
-    // (misma Transaction ID + mismo email), se completa el ticket manual con
-    // los datos reales (Ticket ID, Seat, Barcode Data, etc.) en vez de
-    // crearlo como un ticket nuevo aparte, y ya no se vuelve a marcar como
-    // "eliminado" en futuras importaciones.
-    const claveManual = (transactionId, email) =>
-      `${transactionId}||${(email || '').trim().toLowerCase()}`;
+    // (misma Transaction ID + misma cédula), se completa el ticket manual
+    // con los datos reales (Ticket ID, Seat, Barcode Data, Email, etc.) en
+    // vez de crearlo como un ticket nuevo aparte, y ya no se vuelve a marcar
+    // como "eliminado" en futuras importaciones.
+    // OJO: se usa cédula (no email) porque en "Agregar Ticket" el email ya
+    // no es obligatorio — la cédula sí, y encima es la que el staff verifica
+    // en persona contra el documento de identidad.
+    const claveManual = (transactionId, cedula) =>
+      `${transactionId}||${(cedula || '').trim()}`;
 
     const manualesSinReconciliar = await TicketModel.find({
       creadoManualmente: true,
@@ -133,7 +136,7 @@ const importCsv = async (req, res) => {
 
     const manualPorClave = new Map();
     manualesSinReconciliar.forEach(m => {
-      const clave = claveManual(m['Transaction ID'], m['Email']);
+      const clave = claveManual(m['Transaction ID'], m['Numero de Cedula:']);
       if (!manualPorClave.has(clave)) manualPorClave.set(clave, []);
       manualPorClave.get(clave).push(m);
     });
@@ -142,7 +145,7 @@ const importCsv = async (req, res) => {
     const candidatosRestantes = [];
 
     for (const candidato of candidatos) {
-      const clave = claveManual(candidato['Transaction ID'], candidato['Email']);
+      const clave = claveManual(candidato['Transaction ID'], candidato['Numero de Cedula:']);
       const posibles = manualPorClave.get(clave);
 
       if (!posibles || posibles.length === 0) {
@@ -150,7 +153,7 @@ const importCsv = async (req, res) => {
         continue;
       }
 
-      // Si hay más de un manual pendiente para la misma transacción+email,
+      // Si hay más de un manual pendiente para la misma transacción+cédula,
       // se prioriza el que coincida también en tipo de ticket (localidad)
       const idx = posibles.findIndex(m => m['Ticket'] === candidato['Ticket']);
       const manual = posibles.splice(idx >= 0 ? idx : 0, 1)[0];
@@ -179,6 +182,10 @@ const importCsv = async (req, res) => {
             'Ticket': candidato['Ticket'],
             'Barcode Data': candidato['Barcode Data'],
             'Transaction Date (Local)': candidato['Transaction Date (Local)'],
+            // Localidad y Email quedaban "pendientes" al crear el ticket a
+            // mano (ya no son obligatorios ahí); acá se completan con el
+            // dato real del CSV
+            'Email': candidato['Email'] || undefined,
             reconciliadoConCsv: true,
             fechaReconciliacion: ahoraReconciliacion,
             ticketIdManualOriginal: manualTicketId,
@@ -527,11 +534,13 @@ const crearTicketManual = async (req, res) => {
   try {
     const { nombre, localidad, cedula, email, transactionId } = req.body;
 
+    // Localidad y Email son opcionales: se completan solos con el dato real
+    // del CSV cuando esta transacción se reconcilie (igual que ya pasa con
+    // Ticket ID/Seat/Barcode Data). Solo hace falta lo que de verdad se usa
+    // para identificar y reconciliar: nombre, cédula y Transaction ID.
     const faltantes = [];
     if (!nombre?.trim()) faltantes.push('nombre');
-    if (!localidad?.trim()) faltantes.push('localidad');
     if (!cedula?.trim()) faltantes.push('cédula');
-    if (!email?.trim()) faltantes.push('email');
     if (!transactionId?.trim()) faltantes.push('Transaction ID');
 
     if (faltantes.length > 0) {
@@ -576,9 +585,9 @@ const crearTicketManual = async (req, res) => {
     const doc = {
       'First Name': firstName,
       'Last Name': lastName,
-      'Email': email.trim(),
-      'Ticket': localidad.trim(),
-      'Seat': localidad.trim(),
+      'Email': email?.trim() || undefined,
+      'Ticket': localidad?.trim() || 'Sin localidad (pendiente)',
+      'Seat': localidad?.trim() || 'Sin localidad (pendiente)',
       'Transaction ID': transactionId.trim(),
       'Ticket ID': ticketIdManual,
       'Numero de Cedula:': cedula.trim(),
@@ -607,7 +616,7 @@ const crearTicketManual = async (req, res) => {
         ticketId: ticketIdManual,
         transactionId: transactionId.trim(),
         puntoTrabajo: req.user.puntoTrabajo,
-        detalles: { nombre: nombreLimpio, localidad: localidad.trim(), cedula: cedula.trim(), email: email.trim() },
+        detalles: { nombre: nombreLimpio, localidad: localidad?.trim() || '', cedula: cedula.trim(), email: email?.trim() || '' },
         ip: req.ip || 'Unknown'
       });
     } catch (auditError) {
@@ -666,9 +675,7 @@ const editarTicketManual = async (req, res) => {
 
     const faltantes = [];
     if (!nombre?.trim()) faltantes.push('nombre');
-    if (!localidad?.trim()) faltantes.push('localidad');
     if (!cedula?.trim()) faltantes.push('cédula');
-    if (!email?.trim()) faltantes.push('email');
     if (!transactionId?.trim()) faltantes.push('Transaction ID');
 
     if (faltantes.length > 0) {
@@ -720,9 +727,9 @@ const editarTicketManual = async (req, res) => {
         $set: {
           'First Name': firstName,
           'Last Name': lastName,
-          'Email': email.trim(),
-          'Ticket': localidad.trim(),
-          'Seat': localidad.trim(),
+          'Email': email?.trim() || undefined,
+          'Ticket': localidad?.trim() || 'Sin localidad (pendiente)',
+          'Seat': localidad?.trim() || 'Sin localidad (pendiente)',
           'Transaction ID': transactionId.trim(),
           'Numero de Cedula:': cedula.trim()
         }
@@ -744,9 +751,9 @@ const editarTicketManual = async (req, res) => {
         detalles: {
           accion: 'editar',
           nombre: nombreLimpio,
-          localidad: localidad.trim(),
+          localidad: localidad?.trim() || '',
           cedula: cedula.trim(),
-          email: email.trim()
+          email: email?.trim() || ''
         },
         ip: req.ip || 'Unknown'
       });
