@@ -76,7 +76,7 @@ const ImportCsvPage = () => {
 
         const {
           nuevosAgregados, yaExistian, reconciliados = 0, eliminados = 0, eliminadosYaCanjeados = 0,
-          cedulasCompletadas = 0, ticketsEncoladosImpresion = 0
+          cedulasCompletadas = 0, ticketsSinImprimirFisicamente = 0
         } = response.data;
 
         let html = `<strong>${nuevosAgregados}</strong> ticket(s) nuevo(s) agregado(s)<br/>` +
@@ -87,8 +87,8 @@ const ImportCsvPage = () => {
         if (cedulasCompletadas > 0) {
           html += `<br/><strong>${cedulasCompletadas}</strong> cédula(s) completada(s) automáticamente (misma Transaction ID)`;
         }
-        if (ticketsEncoladosImpresion > 0) {
-          html += `<br/><strong>${ticketsEncoladosImpresion}</strong> ticket(s) comprados después del corte se encolaron para el impresor`;
+        if (ticketsSinImprimirFisicamente > 0) {
+          html += `<br/><strong>${ticketsSinImprimirFisicamente}</strong> ticket(s) comprados después del corte todavía no tienen impresión física (se encolarán para el impresor recién cuando se canjeen)`;
         }
         if (eliminados > 0) {
           html += `<br/><span class="text-danger"><strong>${eliminados}</strong> ya no están en el archivo y se marcaron como eliminados</span>`;
@@ -266,10 +266,10 @@ const ImportCsvPage = () => {
                       cédulas completadas automáticamente (misma Transaction ID)
                     </li>
                   )}
-                  {ultimoResultado.ticketsEncoladosImpresion > 0 && (
+                  {ultimoResultado.ticketsSinImprimirFisicamente > 0 && (
                     <li className="mb-2">
-                      <span className="badge bg-warning text-dark me-2">{ultimoResultado.ticketsEncoladosImpresion}</span>
-                      comprados después del corte, encolados para el impresor
+                      <span className="badge bg-warning text-dark me-2">{ultimoResultado.ticketsSinImprimirFisicamente}</span>
+                      comprados después del corte, sin impresión física (se encolan para el impresor recién al canjearse)
                     </li>
                   )}
                   {ultimoResultado.omitidosPorDatosIncompletos > 0 && (

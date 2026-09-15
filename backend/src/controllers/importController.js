@@ -424,43 +424,23 @@ const importCsv = async (req, res) => {
 
     const last4Completados = last4CompletadosNuevos + ticketsConLast4Completado.length;
 
-    // --- Encolar para impresión los tickets comprados DESPUÉS del último
+    // --- Contar (informativo) los tickets comprados DESPUÉS del último
     // corte de impresión física ---
     // El jefe imprime los boletos por tandas hasta cierta fecha y hora; lo
-    // que se vendió después de esa tanda todavía no tiene impresión física,
-    // así que en vez de asumir que ya están impresos, se marcan pendientes y
-    // se encolan para el rol impresor_cola (misma cola que ya usa el canje
-    // de staff).
-    let ticketsEncoladosImpresion = 0;
+    // que se vendió después de esa tanda todavía no tiene impresión física.
+    // OJO: esto es solo informativo, NO se encolan para impresión acá. La
+    // solicitud de impresión (y el resaltado amarillo "Debe imprimir") se
+    // genera únicamente cuando alguien de staff canjea ese ticket y completa
+    // el formulario de canje (mismo mecanismo de siempre) — no de una al
+    // importar, para no llenar la cola de impresores con tickets que nadie
+    // ha retirado todavía.
+    let ticketsSinImprimirFisicamente = 0;
     const corteImpresionUtc = parseCorteLocalAUtc(req.body.impresoHasta);
     if (corteImpresionUtc && nuevos.length > 0) {
-      const printerSettings = await PrinterSettings.getSettings();
-      if (printerSettings.enabled) {
-        const grupos = new Map(); // "transactionId||tipo" -> { transactionId, tipo }
-        for (const doc of nuevos) {
-          const fechaUtc = parseTransactionDateUtc(doc['Transaction Date (UTC)']);
-          if (!fechaUtc || fechaUtc <= corteImpresionUtc) continue;
-          const transactionId = doc['Transaction ID'];
-          const tipo = doc['Ticket'];
-          grupos.set(`${transactionId}||${tipo}`, { transactionId, tipo });
-        }
-
-        const io = req.app.get('io');
-        for (const { transactionId, tipo } of grupos.values()) {
-          const ticketIdsTransaccion = await getUnprintedTransactionTicketIds(TicketModel, transactionId, tipo);
-          if (ticketIdsTransaccion.length > 0) {
-            await createOrExtendPrintRequest({
-              transactionId,
-              ticketIds: ticketIdsTransaccion,
-              tipos: tipo ? [tipo] : [],
-              color: resolveColor(printerSettings.ticketColors, tipo),
-              puntoTrabajo: req.user.puntoTrabajo,
-              usuarioId: req.user._id,
-              io
-            });
-            ticketsEncoladosImpresion += ticketIdsTransaccion.length;
-          }
-        }
+      for (const doc of nuevos) {
+        const fechaUtc = parseTransactionDateUtc(doc['Transaction Date (UTC)']);
+        if (!fechaUtc || fechaUtc <= corteImpresionUtc) continue;
+        ticketsSinImprimirFisicamente += 1;
       }
     }
 
@@ -519,7 +499,7 @@ const importCsv = async (req, res) => {
       cedulasCompletadas,
       last4Completados,
       ticketsCanjeadosPorTransaccionManual,
-      ticketsEncoladosImpresion
+      ticketsSinImprimirFisicamente
     };
 
     try {
@@ -601,8 +581,8 @@ const importCsv = async (req, res) => {
     if (last4Completados > 0) {
       message += ` ${last4Completados} medio(s) de pago completado(s) automáticamente (dejaron de figurar como "Cash" sin serlo).`;
     }
-    if (ticketsEncoladosImpresion > 0) {
-      message += ` ${ticketsEncoladosImpresion} ticket(s) comprados después del corte de impresión se encolaron para el impresor.`;
+    if (ticketsSinImprimirFisicamente > 0) {
+      message += ` ${ticketsSinImprimirFisicamente} ticket(s) comprados después del corte de impresión todavía no tienen impresión física (se encolarán para el impresor recién cuando se canjeen).`;
     }
     if (idsDesaparecidos.length > 0) {
       message += ` ${idsDesaparecidos.length} ya no están en el archivo y se marcaron como eliminados`;
