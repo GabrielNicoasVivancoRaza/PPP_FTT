@@ -118,6 +118,13 @@ export const ticketService = {
     return response.data;
   },
 
+  // Deshacer un canje mal hecho: el ticket vuelve a estar disponible para
+  // canjear (solo jefe)
+  deshacerCanje: async (ticketId, motivo = '') => {
+    const response = await api.post(`/tickets/${ticketId}/deshacer-canje`, { motivo });
+    return response.data;
+  },
+
   // Colocar / quitar una nota informativa en un ticket (solo jefe). Enviar
   // informacion vacío quita la nota.
   marcarInformacion: async (ticketId, informacion = '') => {

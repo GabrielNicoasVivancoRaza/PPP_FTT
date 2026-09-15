@@ -17,6 +17,7 @@ const {
   getReporteDiario,
   exportTicketsCsv,
   canjeTicket,
+  deshacerCanje,
   bulkCanjeTickets,
   bulkMarcarInformacion
 } = require('../controllers/ticketController');
@@ -134,5 +135,8 @@ router.post('/:id/reprint', auth, authorize('jefe', 'impresor_solo', 'impresor_c
 // Nota: canjeTicket ya registra su propio log de auditoría (con ticketId/detalles/ip completos),
 // por lo que NO se usa auditLogger aquí para evitar duplicar el registro en Auditoría.
 router.post('/:id/canje', auth, authorize('jefe', 'staff', 'impresor_solo'), canjeTicket);
+
+// @route   POST /api/tickets/:id/deshacer-canje (solo jefe)
+router.post('/:id/deshacer-canje', auth, authorize('jefe'), deshacerCanje);
 
 module.exports = router;

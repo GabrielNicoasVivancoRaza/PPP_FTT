@@ -1081,6 +1081,96 @@ const canjeTicket = async (req, res) => {
   }
 };
 
+// @desc    Deshacer un canje mal hecho: el ticket vuelve a estar disponible
+// para canjear. Solo limpia los campos propios del canje (quién retira,
+// celular, cédula, fecha, usuario y punto DE CANJE); no toca impresión
+// (es un estado aparte, ligado a la transacción completa, no a un ticket
+// puntual) ni fraude/eliminado (son marcas independientes).
+// @route   POST /api/tickets/:id/deshacer-canje
+// @access  Private (solo jefe)
+const deshacerCanje = async (req, res) => {
+  try {
+    const ticketId = req.params.id;
+    const { motivo } = req.body;
+
+    const TicketModel = req.TicketModel || Ticket;
+    const ticket = await TicketModel.findOne({ 'Ticket ID': ticketId });
+
+    if (!ticket) {
+      return res.status(404).json({
+        success: false,
+        message: 'Ticket no encontrado'
+      });
+    }
+
+    if (!ticket.canjeado) {
+      return res.status(400).json({
+        success: false,
+        message: 'Este ticket no está canjeado, no hay nada que deshacer'
+      });
+    }
+
+    // Se guarda una copia del canje que se está deshaciendo, para que el
+    // log de auditoría conserve el detalle de lo que se anuló
+    const canjeAnterior = {
+      fechaCanje: ticket.fechaCanje,
+      quienRetira: ticket.quienRetira,
+      quienOtro: ticket.quienOtro,
+      parentesco: ticket.parentesco,
+      celular: ticket.celular,
+      cedulaQuienRetira: ticket.cedulaQuienRetira,
+      puntoCanje: ticket.puntoCanje,
+      usuarioCanje: ticket.usuarioCanje
+    };
+
+    ticket.canjeado = false;
+    ticket.fechaCanje = undefined;
+    ticket.usuarioCanje = undefined;
+    ticket.puntoCanje = undefined;
+    ticket.quienRetira = undefined;
+    ticket.celular = undefined;
+    ticket.cedulaQuienRetira = undefined;
+    ticket.parentesco = undefined;
+    ticket.parentescoDescripcion = undefined;
+    ticket.quienOtro = undefined;
+
+    await ticket.save();
+
+    const io = req.app.get('io');
+    emitTicketUpdates(io, [ticket], 'canje-deshecho');
+
+    try {
+      await AuditLog.create({
+        tipo: 'canje_deshecho',
+        usuario: req.user._id,
+        ticketId: ticket['Ticket ID'].toString(),
+        transactionId: ticket['Transaction ID']?.toString(),
+        puntoTrabajo: req.user.puntoTrabajo,
+        detalles: {
+          motivo: motivo?.trim() || '',
+          canjeAnterior
+        },
+        ip: req.ip || 'Unknown'
+      });
+    } catch (auditError) {
+      console.error('Error al crear log de auditoría:', auditError);
+    }
+
+    res.json({
+      success: true,
+      message: 'Canje deshecho: el ticket vuelve a estar disponible para canjear',
+      ticket
+    });
+
+  } catch (error) {
+    console.error('Error al deshacer canje:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+};
+
 // @desc    Realizar canje masivo de tickets
 // @route   POST /api/tickets/bulk-canje
 // @access  Private (Jefe only)
@@ -1442,6 +1532,7 @@ module.exports = {
   getReporteDiario,
   exportTicketsCsv,
   canjeTicket,
+  deshacerCanje,
   bulkCanjeTickets,
   bulkMarcarInformacion
 };

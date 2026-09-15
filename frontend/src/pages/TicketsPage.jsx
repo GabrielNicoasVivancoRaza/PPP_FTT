@@ -1233,6 +1233,34 @@ const TicketsPage = () => {
     }
   };
 
+  // Deshacer un canje mal hecho (solo jefe): el ticket vuelve a estar
+  // disponible para canjearse de nuevo. No toca impresión ni fraude/eliminado.
+  const handleDeshacerCanje = async (ticket) => {
+    const { value: motivo, isConfirmed } = await Swal.fire({
+      title: '¿Deshacer este canje?',
+      html: `Ticket <code>${ticket['Ticket ID']}</code> — ${ticket['First Name'] || ''} ${ticket['Last Name'] || ''}<br/>` +
+            '<small>El ticket vuelve a quedar disponible para canjearse de nuevo. No se puede deshacer esta acción.</small>',
+      input: 'text',
+      inputPlaceholder: 'Motivo (opcional)',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, deshacer canje',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#dc3545'
+    });
+    if (!isConfirmed) return;
+
+    try {
+      await ticketService.deshacerCanje(ticket['Ticket ID'], motivo || '');
+      Swal.fire({ title: 'Canje deshecho', icon: 'success', timer: 1500, showConfirmButton: false });
+      setShowCanjeInfoModal(false);
+      await refreshTicketsData(false);
+    } catch (error) {
+      console.error('Error al deshacer canje:', error);
+      Swal.fire('Error', error.response?.data?.message || 'No se pudo deshacer el canje', 'error');
+    }
+  };
+
   // Colocar / editar / quitar una nota informativa en un ticket (solo jefe).
   // A diferencia de fraude, NO bloquea el canje: solo pinta la fila de gris
   // y muestra el texto a todos los roles.
@@ -2664,6 +2692,16 @@ const TicketsPage = () => {
                     )}
                   </div>
                   <div className="modal-footer">
+                    {isJefe && (
+                      <button
+                        type="button"
+                        className="btn btn-outline-danger me-auto"
+                        onClick={() => handleDeshacerCanje(selectedCanjeInfo)}
+                        title="El ticket vuelve a quedar disponible para canjearse de nuevo"
+                      >
+                        <i className="fas fa-rotate-left me-2"></i>Deshacer canje
+                      </button>
+                    )}
                     <button
                       type="button"
                       className="btn btn-secondary"

@@ -5,16 +5,21 @@ import Swal from 'sweetalert2';
 import { hasRole } from '../utils/roles';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
-// Paleta de colores predefinida para asignar a cada tipo de ticket
+// Paleta de colores predefinida para asignar a cada tipo de ticket — lista
+// cerrada a propósito, elegida para que se distingan bien entre sí
 const PALETA = [
-  { nombre: 'Negro', valor: '#111827' },
+  { nombre: 'Morado', valor: '#7c3aed' },
   { nombre: 'Amarillo', valor: '#f59e0b' },
   { nombre: 'Rojo', valor: '#dc2626' },
+  { nombre: 'Celeste', valor: '#0ea5e9' },
+  { nombre: 'Gris', valor: '#6b7280' },
   { nombre: 'Azul', valor: '#2563eb' },
   { nombre: 'Verde', valor: '#16a34a' },
-  { nombre: 'Morado', valor: '#7c3aed' },
   { nombre: 'Naranja', valor: '#ea580c' },
-  { nombre: 'Rosado', valor: '#db2777' }
+  { nombre: 'Rosado', valor: '#db2777' },
+  { nombre: 'Negro', valor: '#111827' },
+  { nombre: 'Café', valor: '#92400e' },
+  { nombre: 'Turquesa', valor: '#0d9488' }
 ];
 
 const PrinterSettingsPage = () => {
@@ -189,32 +194,23 @@ const PrinterSettingsPage = () => {
                           <tr key={tipo}>
                             <td className="fw-semibold">{tipo}</td>
                             <td>
-                              <div className="d-flex align-items-center gap-2">
-                                <select
-                                  className="form-select form-select-sm"
-                                  style={{ maxWidth: 200 }}
-                                  value={PALETA.some(p => p.valor === colores[tipo]) ? colores[tipo] : 'custom'}
-                                  onChange={(e) => {
-                                    if (e.target.value !== 'custom') {
-                                      handleColorChange(tipo, e.target.value);
-                                    }
-                                  }}
-                                >
-                                  <option value="custom" disabled hidden={colores[tipo] && !PALETA.some(p => p.valor === colores[tipo])}>
-                                    Seleccione un color
-                                  </option>
-                                  {PALETA.map(p => (
-                                    <option key={p.valor} value={p.valor}>{p.nombre}</option>
-                                  ))}
-                                </select>
-                                <input
-                                  type="color"
-                                  className="form-control form-control-color"
-                                  value={colores[tipo] || '#cccccc'}
-                                  onChange={(e) => handleColorChange(tipo, e.target.value)}
-                                  title="Color personalizado"
-                                />
-                              </div>
+                              <select
+                                className="form-select form-select-sm"
+                                style={{ maxWidth: 200 }}
+                                value={PALETA.some(p => p.valor === colores[tipo]) ? colores[tipo] : 'custom'}
+                                onChange={(e) => {
+                                  if (e.target.value !== 'custom') {
+                                    handleColorChange(tipo, e.target.value);
+                                  }
+                                }}
+                              >
+                                <option value="custom" disabled hidden={colores[tipo] && !PALETA.some(p => p.valor === colores[tipo])}>
+                                  Seleccione un color
+                                </option>
+                                {PALETA.map(p => (
+                                  <option key={p.valor} value={p.valor}>{p.nombre}</option>
+                                ))}
+                              </select>
                             </td>
                             <td>
                               <span
