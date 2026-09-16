@@ -1370,11 +1370,12 @@ const TicketsPage = () => {
     // Nota informativa del jefe: no bloquea el canje, pero se pinta gris
     // para que todos la vean mientras esté colocada
     if (ticket.informacion) return 'informacion';
+    // Un ticket "pendienteImpresion" (comprado después del corte de
+    // impresión física al importar) SIEMPRE se marca como que falta
+    // imprimir, esté o no habilitada la impresión por cola en general —
+    // son dos cosas distintas, así que esto manda incluso sobre "completed"
+    if (ticket.pendienteImpresion) return 'sinImprimir';
     if (ticket.canjeado && (ticket.impreso || !printerEnabled)) return 'completed';
-    // Solo se marca "falta imprimir" si está genuinamente encolado (por
-    // canje de staff, corte de fecha en importación, o alta manual) — no
-    // por cualquier ticket con impreso:false
-    if (printerEnabled && ticket.pendienteImpresion) return 'sinImprimir';
     if (ticket.impreso) return 'printed';
     return 'normal';
   };
@@ -1410,7 +1411,7 @@ const TicketsPage = () => {
       ticket.quienRetira || 'N/A';
 
     let estado;
-    if (ticket.canjeado && printerEnabled && ticket.pendienteImpresion) estado = 'Canjeado (pendiente de imprimir)';
+    if (ticket.canjeado && ticket.pendienteImpresion) estado = 'Canjeado (pendiente de imprimir)';
     else if (ticket.canjeado) estado = 'Canjeado';
     else estado = 'Impreso (pendiente de canje)';
 

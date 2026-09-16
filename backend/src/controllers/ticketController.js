@@ -959,10 +959,17 @@ const canjeTicket = async (req, res) => {
     // imprima directo en el mismo acto (impresor_solo ya lo hace arriba) —
     // el canje lo puede hacer staff O jefe (ver authorize() de la ruta), así
     // que no se puede filtrar solo por "staff" o el canje de jefe nunca
-    // encola nada. Se hace ANTES de propagar el canje (abajo) para que esa
-    // propagación ya vea "pendienteImpresion" actualizado al recargar los
-    // tickets de la transacción.
-    if (printerSettings.enabled && !hasRole(req.user, 'impresor_solo')) {
+    // encola nada.
+    // OJO: un ticket marcado "pendienteImpresion" (comprado después del
+    // corte de impresión física al importar el CSV) SIEMPRE se encola al
+    // canjearse, esté o no habilitada la impresión por cola en general —
+    // son dos cosas distintas: "impresión habilitada" controla el flujo
+    // normal de impresor_cola, pero un ticket sin impresión física conocida
+    // tiene que ir a la cola sí o sí para que alguien lo imprima.
+    // Se hace ANTES de propagar el canje (abajo) para que esa propagación ya
+    // vea "pendienteImpresion" actualizado al recargar los tickets de la
+    // transacción.
+    if ((printerSettings.enabled || ticket.pendienteImpresion) && !hasRole(req.user, 'impresor_solo')) {
       const tipo = ticket['Ticket'];
       const ticketIdsTransaccion = await getUnprintedTransactionTicketIds(TicketModel, ticket['Transaction ID'], tipo);
       // Si no queda nada por imprimir (p. ej. otro impresor ya imprimió toda
@@ -1397,16 +1404,28 @@ const bulkCanjeTickets = async (req, res) => {
     // canjee y NO imprima directo en el mismo acto (impresor_solo ya lo hizo
     // arriba) — el canje masivo lo puede hacer staff O jefe (ver authorize()
     // de la ruta), así que no se puede filtrar solo por "staff".
-    if (printerSettings.enabled && !hasRole(req.user, 'impresor_solo')) {
+    // OJO: un grupo con algún ticket "pendienteImpresion" (comprado después
+    // del corte de impresión física al importar el CSV) SIEMPRE se encola,
+    // esté o no habilitada la impresión por cola en general — son dos cosas
+    // distintas (ver mismo comentario en canjeTicket, más arriba).
+    if (!hasRole(req.user, 'impresor_solo')) {
       const paresUnicos = new Map();
       ticketsToRedeem.forEach(ticket => {
         const key = `${ticket['Transaction ID']}||${ticket['Ticket']}`;
         if (!paresUnicos.has(key)) {
-          paresUnicos.set(key, { transactionId: ticket['Transaction ID'], tipo: ticket['Ticket'] });
+          paresUnicos.set(key, {
+            transactionId: ticket['Transaction ID'],
+            tipo: ticket['Ticket'],
+            algunoPendiente: false
+          });
+        }
+        if (ticket.pendienteImpresion) {
+          paresUnicos.get(key).algunoPendiente = true;
         }
       });
 
-      for (const { transactionId, tipo } of paresUnicos.values()) {
+      for (const { transactionId, tipo, algunoPendiente } of paresUnicos.values()) {
+        if (!printerSettings.enabled && !algunoPendiente) continue;
         const ticketIdsTransaccion = await getUnprintedTransactionTicketIds(TicketModel, transactionId, tipo);
         // Si no queda nada por imprimir, no hace falta crear/extender la solicitud
         if (ticketIdsTransaccion.length === 0) continue;
