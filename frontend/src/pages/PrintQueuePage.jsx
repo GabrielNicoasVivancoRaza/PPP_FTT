@@ -210,16 +210,6 @@ const PrintQueuePage = () => {
     );
   }
 
-  if (enabled === false) {
-    return (
-      <div className="container-fluid">
-        <div className="alert alert-info">
-          La función de impresión no está habilitada actualmente. Contacte al jefe del evento.
-        </div>
-      </div>
-    );
-  }
-
   const totalPendientes = pendientes.length;
   const totalTicketsPendientes = pendientes.reduce((sum, r) => sum + r.ticketIds.length, 0);
   const totalSeleccionados = selected.size;
@@ -237,6 +227,14 @@ const PrintQueuePage = () => {
           <i className="fas fa-qrcode me-1"></i>Escanear
         </button>
       </div>
+
+      {enabled === false && (
+        <div className="alert alert-info py-2">
+          <i className="fas fa-circle-info me-1"></i>
+          La impresión por cola no está habilitada de forma general, pero acá igual aparecen los tickets
+          que sí hace falta imprimir (los agregados después del último corte de impresión física).
+        </div>
+      )}
 
       <ul className="nav nav-tabs mb-4">
         <li className="nav-item">
