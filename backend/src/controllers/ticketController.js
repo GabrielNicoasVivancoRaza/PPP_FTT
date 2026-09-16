@@ -1027,6 +1027,12 @@ const canjeTicket = async (req, res) => {
       ticketsImpresosTransaccion = afectados.length;
       const otros = afectados.filter(t => t['Ticket ID'] !== ticket['Ticket ID']);
       emitTicketUpdates(io, otros, 'impresion-transaccion');
+      // markTransactionPrinted limpia "pendienteImpresion" en la base para
+      // toda la transacción/tipo (incluido este ticket, si lo traía marcado
+      // de una importación con corte de fecha), pero no toca este documento
+      // ya cargado en memoria: sin esto, la respuesta y el evento de abajo
+      // seguirían mostrándolo en amarillo aunque ya se imprimió y canjeó.
+      ticket.pendienteImpresion = false;
     }
 
     // Crear log de auditoría de forma segura
