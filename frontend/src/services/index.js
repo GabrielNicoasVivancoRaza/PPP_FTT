@@ -23,6 +23,12 @@ export const authService = {
   getProfile: async () => {
     const response = await api.get('/auth/profile');
     return response.data;
+  },
+
+  // Cambiar el punto de trabajo activo (entre los asignados al usuario)
+  switchPuntoTrabajo: async (puntoTrabajo) => {
+    const response = await api.put('/auth/punto-trabajo', { puntoTrabajo });
+    return response.data;
   }
 };
 

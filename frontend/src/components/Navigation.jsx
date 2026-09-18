@@ -1,17 +1,32 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { FTT_LOGO } from '../assets/fttLogo';
 import { ROLE_INFO, getRoles } from '../utils/roles';
+import Swal from 'sweetalert2';
 
 const Navigation = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, switchPuntoTrabajo } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [cambiandoPunto, setCambiandoPunto] = useState(false);
 
   const handleLogout = async () => {
     await logout();
     navigate('/login');
+  };
+
+  const handleCambiarPunto = async (e) => {
+    const nuevoPunto = e.target.value;
+    if (!nuevoPunto || nuevoPunto === user?.puntoTrabajo) return;
+    try {
+      setCambiandoPunto(true);
+      await switchPuntoTrabajo(nuevoPunto);
+    } catch (error) {
+      Swal.fire('Error', error.response?.data?.message || 'No se pudo cambiar el punto de trabajo', 'error');
+    } finally {
+      setCambiandoPunto(false);
+    }
   };
 
   // Un usuario puede tener más de un rol: los ítems de menú se muestran si
@@ -212,6 +227,22 @@ const Navigation = () => {
                     return <span key={r} className={`role-badge ${info.className}`}>{info.label}</span>;
                   })}
                 </li>
+                {user?.puntosTrabajo?.length > 1 && (
+                  <li className="px-3 py-2">
+                    <label className="form-label small text-muted mb-1">Punto de trabajo activo</label>
+                    <select
+                      className="form-select form-select-sm"
+                      value={user?.puntoTrabajo || ''}
+                      onChange={handleCambiarPunto}
+                      disabled={cambiandoPunto}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {user.puntosTrabajo.map(p => (
+                        <option key={p} value={p}>{p}</option>
+                      ))}
+                    </select>
+                  </li>
+                )}
                 <li>
                   <button
                     className="dropdown-item"

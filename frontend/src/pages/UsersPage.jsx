@@ -18,7 +18,7 @@ const UsersPage = () => {
     nombre: '',
     usuario: '',
     roles: ['staff'],
-    puntoTrabajo: ''
+    puntosTrabajo: []
   });
 
   useEffect(() => {
@@ -69,14 +69,14 @@ const UsersPage = () => {
       return;
     }
 
-    // Todos los roles excepto jefe e importador requieren punto de trabajo
-    if (necesitaPuntoTrabajo(formData.roles) && !formData.puntoTrabajo) {
-      Swal.fire('Falta información', 'Debe seleccionar un punto de trabajo', 'warning');
+    // Todos los roles excepto jefe e importador requieren al menos un punto de trabajo
+    if (necesitaPuntoTrabajo(formData.roles) && formData.puntosTrabajo.length === 0) {
+      Swal.fire('Falta información', 'Debe seleccionar al menos un punto de trabajo', 'warning');
       return;
     }
 
-    // Validar que el punto de trabajo seleccionado existe
-    if (formData.puntoTrabajo && !puntosVenta.some(p => p.nombre === formData.puntoTrabajo)) {
+    // Validar que los puntos de trabajo seleccionados existen
+    if (formData.puntosTrabajo.some(pt => !puntosVenta.some(p => p.nombre === pt))) {
       Swal.fire('Punto de trabajo inválido', 'Por favor actualice la lista.', 'warning');
       return;
     }
@@ -92,7 +92,7 @@ const UsersPage = () => {
 
       setShowModal(false);
       setEditingUser(null);
-      setFormData({ nombre: '', usuario: '', roles: ['staff'], puntoTrabajo: '' });
+      setFormData({ nombre: '', usuario: '', roles: ['staff'], puntosTrabajo: [] });
       fetchUsers();
     } catch (error) {
       console.error('Error saving user:', error);
@@ -106,7 +106,11 @@ const UsersPage = () => {
       nombre: userToEdit.nombre,
       usuario: userToEdit.usuario,
       roles: getRoles(userToEdit),
-      puntoTrabajo: userToEdit.puntoTrabajo || ''
+      // "puntosTrabajo" es la lista nueva; si la cuenta es vieja y solo
+      // tiene el singular "puntoTrabajo" guardado, se arma la lista con ese
+      puntosTrabajo: (userToEdit.puntosTrabajo && userToEdit.puntosTrabajo.length > 0)
+        ? userToEdit.puntosTrabajo
+        : (userToEdit.puntoTrabajo ? [userToEdit.puntoTrabajo] : [])
     });
     setShowModal(true);
     fetchPuntosVenta(); // Refrescar puntos de venta al editar
@@ -119,6 +123,16 @@ const UsersPage = () => {
       roles: prev.roles.includes(rol)
         ? prev.roles.filter(r => r !== rol)
         : [...prev.roles, rol]
+    }));
+  };
+
+  // Marca/desmarca un punto de trabajo del usuario (puede tener varios)
+  const togglePuntoTrabajo = (nombre) => {
+    setFormData(prev => ({
+      ...prev,
+      puntosTrabajo: prev.puntosTrabajo.includes(nombre)
+        ? prev.puntosTrabajo.filter(p => p !== nombre)
+        : [...prev.puntosTrabajo, nombre]
     }));
   };
 
@@ -185,7 +199,7 @@ const UsersPage = () => {
   };
 
   const resetForm = () => {
-    setFormData({ nombre: '', usuario: '', roles: ['staff'], puntoTrabajo: '' });
+    setFormData({ nombre: '', usuario: '', roles: ['staff'], puntosTrabajo: [] });
     setEditingUser(null);
     setShowModal(false);
   };
@@ -254,7 +268,11 @@ const UsersPage = () => {
                               ))}
                             </div>
                           </td>
-                          <td>{userItem.puntoTrabajo || '-'}</td>
+                          <td>
+                            {(userItem.puntosTrabajo && userItem.puntosTrabajo.length > 0)
+                              ? userItem.puntosTrabajo.join(', ')
+                              : (userItem.puntoTrabajo || '-')}
+                          </td>
                           <td>
                             <span className={`table-tag ${userItem.activo ? 'table-tag-active' : 'table-tag-inactive'}`}>
                               {userItem.activo ? 'Activo' : 'Inactivo'}
@@ -380,7 +398,7 @@ const UsersPage = () => {
                       {necesitaPuntoTrabajo(formData.roles) && (
                         <div className="mb-3">
                           <div className="d-flex justify-content-between align-items-center">
-                            <label className="form-label">Punto de Trabajo *</label>
+                            <label className="form-label">Puntos de Trabajo *</label>
                             <button
                               type="button"
                               className="btn btn-outline-secondary btn-sm"
@@ -395,35 +413,40 @@ const UsersPage = () => {
                               Actualizar
                             </button>
                           </div>
-                          <select
-                            className="form-select"
-                            value={formData.puntoTrabajo}
-                            onChange={(e) => setFormData({...formData, puntoTrabajo: e.target.value})}
-                            required
-                            disabled={loadingPuntos}
-                          >
-                            <option value="">
-                              {loadingPuntos ? 'Cargando puntos de venta...' : 'Seleccione un punto de venta'}
-                            </option>
-                            {puntosVenta.filter(punto => punto.activo !== false).map(punto => (
-                              <option key={punto._id} value={punto.nombre}>
-                                {punto.nombre} ({punto.localidades.join(', ')})
-                              </option>
-                            ))}
-                          </select>
+                          <div className="form-text text-muted mb-1">
+                            Puede seleccionar más de uno; si tiene varios, va a poder elegir cuál está activo desde su usuario.
+                          </div>
+                          {loadingPuntos ? (
+                            <div className="text-muted small">Cargando puntos de venta...</div>
+                          ) : (
+                            puntosVenta.filter(punto => punto.activo !== false).map(punto => (
+                              <div className="form-check" key={punto._id}>
+                                <input
+                                  type="checkbox"
+                                  className="form-check-input"
+                                  id={`punto-${punto._id}`}
+                                  checked={formData.puntosTrabajo.includes(punto.nombre)}
+                                  onChange={() => togglePuntoTrabajo(punto.nombre)}
+                                />
+                                <label className="form-check-label" htmlFor={`punto-${punto._id}`}>
+                                  {punto.nombre} ({punto.localidades.join(', ')})
+                                </label>
+                              </div>
+                            ))
+                          )}
                           {puntosVenta.length === 0 && !loadingPuntos && (
                             <small className="form-text text-warning">
-                              No hay puntos de venta disponibles. Debe crear algunos primero en la sección "Puntos de Venta".
+                              No hay puntos de venta disponibles. Debe crear algunos primero en la sección &quot;Puntos de Venta&quot;.
                             </small>
                           )}
                           {puntosVenta.length > 0 && formData.roles.includes('impresor_cola') && (
-                            <small className="form-text text-muted">
-                              La cola de impresión es compartida entre todos los puntos de venta; este punto es solo informativo.
+                            <small className="form-text text-muted d-block">
+                              Solo va a ver y poder imprimir las solicitudes de su punto de trabajo activo.
                             </small>
                           )}
                           {puntosVenta.length > 0 && formData.roles.some(r => !['impresor_cola', 'jefe', 'importador'].includes(r)) && (
-                            <small className="form-text text-muted">
-                              Solo podrá ver tickets de las localidades asociadas a este punto de venta.
+                            <small className="form-text text-muted d-block">
+                              Solo podrá ver tickets de las localidades asociadas a su punto de trabajo activo.
                             </small>
                           )}
                         </div>

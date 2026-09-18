@@ -157,7 +157,15 @@ const TicketsPage = () => {
   }, []);
   
   // Función para actualizar datos en tiempo real (fallback si se necesita recarga completa)
-  const refreshTicketsData = useCallback(async (showIndicator = false) => {
+  // OJO: a propósito NO va envuelta en useCallback. Antes lo estaba con deps
+  // [isJefe, selectedPuntoVenta], así que solo se volvía a crear cuando esos
+  // dos cambiaban — el resto del tiempo seguía apuntando a versiones viejas
+  // de fetchAllTickets/fetchTicketsByPuntoVenta/fetchTicketsForStaff (esas sí
+  // son funciones normales, recreadas en cada render), que a su vez tenían
+  // "cerrados" (closure) los filtros y la página de ESE momento. Por eso
+  // después de canjear un ticket la tabla perdía los filtros y volvía a la
+  // página 1: se estaba re-consultando con datos viejos, no con los actuales.
+  const refreshTicketsData = async (showIndicator = false) => {
     // Solo mostrar indicador si se solicita explícitamente
     if (showIndicator) {
       setUpdateIndicator(true);
@@ -188,8 +196,36 @@ const TicketsPage = () => {
         setTimeout(() => setUpdateIndicator(false), 1000);
       }
     }
-  }, [isJefe, selectedPuntoVenta]);
-  
+  };
+
+  // Muestra el error de una acción de canje/impresión distinguiendo dos
+  // casos: el servidor respondió con un error real (se puede confiar en el
+  // mensaje) vs. no llegó NINGUNA respuesta (conexión lenta en el punto de
+  // venta, o el servidor gratuito "despertando" — pasa seguido al inicio del
+  // día). En el segundo caso la acción puede haberse completado igual del
+  // lado del servidor aunque el navegador no lo haya visto a tiempo, así que
+  // no conviene decir "error de conexión" a secas: eso hace pensar que no
+  // pasó nada cuando en realidad sí se guardó. Se refresca para que se vea
+  // el estado real antes de reintentar (evita canjes duplicados).
+  const mostrarErrorCanje = async (error, accion = 'la acción') => {
+    console.error(`Error en ${accion}:`, error);
+
+    if (!error.response) {
+      await Swal.fire({
+        title: 'No se recibió respuesta del servidor',
+        html:
+          `No se pudo confirmar si ${accion} se completó — puede ser por una conexión lenta en este punto, ` +
+          'o porque el servidor estaba "despertando" (pasa seguido al inicio del día). ' +
+          '<strong>Es posible que ya se haya completado</strong>: revisá el ticket en la tabla antes de reintentar.',
+        icon: 'warning'
+      });
+      await refreshTicketsData(true);
+      return;
+    }
+
+    Swal.fire('Error', error.response?.data?.message || `No se pudo completar ${accion}`, 'error');
+  };
+
   // Configurar Socket.IO para actualizaciones en tiempo real
   useEffect(() => {
     if (!token || !isRealTimeActive) {
@@ -907,23 +943,7 @@ const TicketsPage = () => {
         refreshTicketsData(false);
       }, 2000);
     } catch (error) {
-      console.error('Error en proceso de canje:', error);
-
-      // Mostrar mensaje de error más específico
-      let errorMessage = 'Error en el proceso de canje';
-      if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
-      } else if (error.response?.status === 500) {
-        errorMessage = 'Error interno del servidor. Por favor, revise los logs del backend.';
-      } else if (error.response?.status === 404) {
-        errorMessage = 'Ticket no encontrado';
-      } else if (error.response?.status === 400) {
-        errorMessage = error.response.data?.message || 'Datos inválidos';
-      } else if (error.code === 'NETWORK_ERROR' || !error.response) {
-        errorMessage = 'Error de conexión con el servidor';
-      }
-
-      Swal.fire('Error', errorMessage, 'error');
+      await mostrarErrorCanje(error, 'el canje');
     }
   };
 
@@ -1178,8 +1198,7 @@ const TicketsPage = () => {
         await refreshTicketsData(true);
       }
     } catch (error) {
-      console.error('Error en canje masivo:', error);
-      Swal.fire('Error', error.response?.data?.message || 'Error al canjear tickets', 'error');
+      await mostrarErrorCanje(error, 'el canje masivo');
     }
   };
 

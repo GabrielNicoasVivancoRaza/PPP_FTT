@@ -68,6 +68,7 @@ const login = async (req, res) => {
         rol: user.rol,
         roles: getRoles(user),
         puntoTrabajo: user.puntoTrabajo,
+        puntosTrabajo: user.puntosTrabajo,
         primerAcceso: user.primerAcceso
       }
     });
@@ -191,9 +192,63 @@ const getProfile = async (req, res) => {
   }
 };
 
+// @desc    Cambiar el punto de trabajo ACTIVO del usuario logueado, entre
+// los que tenga asignados (puntosTrabajo). Todo lo que haga de ahí en
+// adelante (canje, impresión, auditoría) queda registrado bajo ese punto,
+// hasta que lo vuelva a cambiar.
+// @route   PUT /api/auth/punto-trabajo
+// @access  Private
+const switchPuntoTrabajo = async (req, res) => {
+  try {
+    const { puntoTrabajo } = req.body;
+
+    if (!puntoTrabajo) {
+      return res.status(400).json({
+        success: false,
+        message: 'Punto de trabajo es requerido'
+      });
+    }
+
+    const user = await User.findById(req.user._id);
+    const asignados = user.puntosTrabajo || [];
+
+    if (!asignados.includes(puntoTrabajo)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Ese punto de trabajo no está entre los asignados a tu cuenta'
+      });
+    }
+
+    user.puntoTrabajo = puntoTrabajo;
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Punto de trabajo activo actualizado',
+      user: {
+        id: user._id,
+        nombre: user.nombre,
+        usuario: user.usuario,
+        rol: user.rol,
+        roles: getRoles(user),
+        puntoTrabajo: user.puntoTrabajo,
+        puntosTrabajo: user.puntosTrabajo,
+        primerAcceso: user.primerAcceso
+      }
+    });
+  } catch (error) {
+    console.error('Error al cambiar punto de trabajo activo:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+  }
+};
+
 module.exports = {
   login,
   changePassword,
   logout,
-  getProfile
+  getProfile,
+  switchPuntoTrabajo
 };

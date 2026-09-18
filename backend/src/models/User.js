@@ -39,6 +39,26 @@ const userSchema = new mongoose.Schema({
       message: 'Debe tener al menos un rol'
     }
   },
+  // Todos los puntos de trabajo asignados a este usuario (un usuario puede
+  // trabajar en más de uno). Es la fuente de verdad; "puntoTrabajo" abajo es
+  // cuál de esos está ACTIVO en este momento — se mantiene por compatibilidad
+  // con todo el código que ya filtra/graba por ese único campo (canje,
+  // impresión, auditoría, etc.), así que no se edita a mano: el hook
+  // pre('validate') lo mantiene sincronizado con "puntosTrabajo", y el
+  // usuario lo cambia con el selector de punto activo (PUT /auth/punto-trabajo).
+  puntosTrabajo: {
+    type: [{ type: String, trim: true }],
+    validate: {
+      validator: function(v) {
+        const roles = (this.roles && this.roles.length) ? this.roles : (this.rol ? [this.rol] : []);
+        if (!necesitaPuntoTrabajo(roles)) return true;
+        return Array.isArray(v) && v.length > 0;
+      },
+      message: 'Debe tener al menos un punto de trabajo asignado'
+    }
+  },
+  // Punto de trabajo ACTIVO (uno de "puntosTrabajo"). No se edita a mano
+  // salvo por el hook de sincronización o el selector de punto activo.
   puntoTrabajo: {
     type: String,
     required: function() {
@@ -82,6 +102,17 @@ userSchema.pre('validate', function(next) {
   }
   if (this.roles && this.roles.length > 0) {
     this.rol = this.roles[0];
+  }
+
+  // Mismo criterio que "rol"/"roles": "puntosTrabajo" es la lista completa,
+  // "puntoTrabajo" es cuál está activo. Cuentas viejas (o código que todavía
+  // solo mande el singular) completan la lista con ese único valor; si
+  // llega la lista pero no el activo, se activa el primero.
+  if ((!this.puntosTrabajo || this.puntosTrabajo.length === 0) && this.puntoTrabajo) {
+    this.puntosTrabajo = [this.puntoTrabajo];
+  }
+  if ((!this.puntoTrabajo) && this.puntosTrabajo && this.puntosTrabajo.length > 0) {
+    this.puntoTrabajo = this.puntosTrabajo[0];
   }
   next();
 });

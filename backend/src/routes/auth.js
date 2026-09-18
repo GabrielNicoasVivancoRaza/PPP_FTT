@@ -5,7 +5,8 @@ const {
   login,
   changePassword,
   logout,
-  getProfile
+  getProfile,
+  switchPuntoTrabajo
 } = require('../controllers/authController');
 
 // @route   POST /api/auth/login
@@ -23,5 +24,8 @@ router.post('/logout', auth, logout);
 
 // @route   GET /api/auth/profile
 router.get('/profile', auth, getProfile);
+
+// @route   PUT /api/auth/punto-trabajo
+router.put('/punto-trabajo', auth, switchPuntoTrabajo);
 
 module.exports = router;

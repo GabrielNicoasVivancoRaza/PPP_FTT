@@ -2,6 +2,7 @@ const PrintRequest = require('../models/PrintRequest');
 const Ticket = require('../models/Ticket');
 const AuditLog = require('../models/AuditLog');
 const { markTransactionPrinted, emitTicketUpdates } = require('../utils/printHelpers');
+const { hasRole } = require('../utils/roles');
 
 // @desc    Crear (o extender) una solicitud de impresión pendiente para una transacción
 // Uso interno, llamado desde ticketController tras un canje exitoso cuando el
@@ -56,6 +57,13 @@ const getQueue = async (req, res) => {
     const query = {};
     if (estado !== 'todas') {
       query.estado = estado;
+    }
+
+    // Un impresor_cola solo debe ver e imprimir lo de SU punto de trabajo —
+    // antes le llegaban solicitudes de cualquier punto de venta. El jefe sí
+    // ve todo (supervisión general).
+    if (!hasRole(req.user, 'jefe')) {
+      query.puntoTrabajo = req.user.puntoTrabajo;
     }
 
     // Orden: pendientes por fecha de solicitud, enviadas por fecha de envío
@@ -115,13 +123,17 @@ const sendToPrint = async (req, res) => {
       });
     }
 
+    // Un impresor_cola solo puede enviar solicitudes de SU punto de trabajo
+    // (evita que actúe sobre IDs de otro punto que haya podido obtener).
+    const filtroPunto = hasRole(req.user, 'jefe') ? {} : { puntoTrabajo: req.user.puntoTrabajo };
+
     const now = new Date();
     const result = await PrintRequest.updateMany(
-      { _id: { $in: requestIds }, estado: { $in: ['pendiente', 'enviada'] } },
+      { _id: { $in: requestIds }, estado: { $in: ['pendiente', 'enviada'] }, ...filtroPunto },
       { $set: { estado: 'enviada', enviadoPor: req.user._id, fechaEnvio: now } }
     );
 
-    const requests = await PrintRequest.find({ _id: { $in: requestIds } });
+    const requests = await PrintRequest.find({ _id: { $in: requestIds }, ...filtroPunto });
     const totalTickets = requests.reduce((sum, r) => sum + r.ticketIds.length, 0);
 
     const io = req.app.get('io');
@@ -167,9 +179,15 @@ const confirmPrint = async (req, res) => {
       });
     }
 
+    // Un impresor_cola solo puede confirmar solicitudes de SU punto de
+    // trabajo (evita que actúe sobre IDs de otro punto que haya podido
+    // obtener).
+    const filtroPunto = hasRole(req.user, 'jefe') ? {} : { puntoTrabajo: req.user.puntoTrabajo };
+
     const requests = await PrintRequest.find({
       _id: { $in: requestIds },
-      estado: { $in: ['enviada', 'pendiente'] }
+      estado: { $in: ['enviada', 'pendiente'] },
+      ...filtroPunto
     });
 
     if (requests.length === 0) {

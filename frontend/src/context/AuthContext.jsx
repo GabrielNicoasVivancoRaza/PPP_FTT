@@ -68,21 +68,17 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const login = async (credentials) => {
-    try {
-      const response = await authService.login(credentials);
-      
-      localStorage.setItem('token', response.token);
-      localStorage.setItem('user', JSON.stringify(response.user));
+    const response = await authService.login(credentials);
 
-      dispatch({
-        type: 'LOGIN_SUCCESS',
-        payload: response,
-      });
+    localStorage.setItem('token', response.token);
+    localStorage.setItem('user', JSON.stringify(response.user));
 
-      return response;
-    } catch (error) {
-      throw error;
-    }
+    dispatch({
+      type: 'LOGIN_SUCCESS',
+      payload: response,
+    });
+
+    return response;
   };
 
   const logout = async () => {
@@ -100,25 +96,39 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const changePassword = async (passwordData) => {
-    try {
-      const response = await authService.changePassword(passwordData);
-      
-      // Actualizar el estado del usuario si es necesario
-      if (state.user.primerAcceso) {
-        dispatch({
-          type: 'UPDATE_USER',
-          payload: { primerAcceso: false },
-        });
-        
-        const updatedUser = { ...state.user, primerAcceso: false };
-        localStorage.setItem('user', JSON.stringify(updatedUser));
-      }
+  // Cambia el punto de trabajo activo (de los varios que puede tener
+  // asignados un usuario) y actualiza el estado local + localStorage para
+  // que el resto de la app (filtros de tickets, salas de socket, etc.) lo
+  // use de inmediato sin tener que volver a loguearse.
+  const switchPuntoTrabajo = async (puntoTrabajo) => {
+    const response = await authService.switchPuntoTrabajo(puntoTrabajo);
 
-      return response;
-    } catch (error) {
-      throw error;
+    dispatch({
+      type: 'UPDATE_USER',
+      payload: { puntoTrabajo: response.user.puntoTrabajo },
+    });
+
+    const updatedUser = { ...state.user, puntoTrabajo: response.user.puntoTrabajo };
+    localStorage.setItem('user', JSON.stringify(updatedUser));
+
+    return response;
+  };
+
+  const changePassword = async (passwordData) => {
+    const response = await authService.changePassword(passwordData);
+
+    // Actualizar el estado del usuario si es necesario
+    if (state.user.primerAcceso) {
+      dispatch({
+        type: 'UPDATE_USER',
+        payload: { primerAcceso: false },
+      });
+
+      const updatedUser = { ...state.user, primerAcceso: false };
+      localStorage.setItem('user', JSON.stringify(updatedUser));
     }
+
+    return response;
   };
 
   const value = {
@@ -126,6 +136,7 @@ export const AuthProvider = ({ children }) => {
     login,
     logout,
     changePassword,
+    switchPuntoTrabajo,
   };
 
   return (

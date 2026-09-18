@@ -10,12 +10,21 @@ console.log('🔍 DEBUG - API_BASE_URL:', API_BASE_URL);
 console.log('🔍 DEBUG - Environment:', import.meta.env.MODE);
 
 // Crear instancia de axios
+// OJO con este timeout: en puntos de venta con internet débil, o cuando el
+// servidor gratuito de Render está "frío" (se duerme tras un rato sin
+// tráfico y tarda en despertar, típicamente al inicio del día), una
+// solicitud de canje puede tardar bastante en responder aunque SÍ se
+// complete del lado del servidor. Con 10s, axios cortaba la espera antes de
+// que llegara la respuesta y mostraba "error de conexión" aun cuando el
+// canje ya se había guardado. Se sube a 30s para dar más margen; para
+// timeouts realmente largos (como la importación de CSV) cada request usa
+// su propio timeout más generoso en vez de este default.
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 10000, // 10 segundos timeout
+  timeout: 30000, // 30 segundos timeout
 });
 
 // Cache optimizado con diferentes TTL para diferentes tipos de datos

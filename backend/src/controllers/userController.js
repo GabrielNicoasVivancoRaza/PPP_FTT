@@ -11,13 +11,24 @@ const rolesDelBody = (body) => {
   return body.rol ? [body.rol] : [];
 };
 
+// Igual criterio para puntos de trabajo: se acepta "puntosTrabajo" (array,
+// forma nueva, un usuario puede trabajar en más de uno) o "puntoTrabajo"
+// (string, forma vieja) para no romper ningún llamador que mande el singular.
+const puntosTrabajoDelBody = (body) => {
+  if (Array.isArray(body.puntosTrabajo) && body.puntosTrabajo.length > 0) {
+    return [...new Set(body.puntosTrabajo.map(p => (p || '').trim()).filter(Boolean))];
+  }
+  return body.puntoTrabajo ? [body.puntoTrabajo.trim()] : [];
+};
+
 // @desc    Crear nuevo usuario
 // @route   POST /api/users
 // @access  Private (solo jefe)
 const createUser = async (req, res) => {
   try {
-    const { nombre, usuario, puntoTrabajo } = req.body;
+    const { nombre, usuario } = req.body;
     const roles = rolesDelBody(req.body);
+    const puntosTrabajo = puntosTrabajoDelBody(req.body);
 
     if (!nombre || !usuario || roles.length === 0) {
       return res.status(400).json({
@@ -40,10 +51,10 @@ const createUser = async (req, res) => {
       });
     }
 
-    if (necesitaPuntoTrabajo(roles) && !puntoTrabajo) {
+    if (necesitaPuntoTrabajo(roles) && puntosTrabajo.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'Punto de trabajo es requerido para este rol'
+        message: 'Al menos un punto de trabajo es requerido para este rol'
       });
     }
 
@@ -62,7 +73,7 @@ const createUser = async (req, res) => {
       usuario,
       password: process.env.DEFAULT_PASSWORD,
       roles,
-      puntoTrabajo: necesitaPuntoTrabajo(roles) ? puntoTrabajo : undefined,
+      puntosTrabajo: necesitaPuntoTrabajo(roles) ? puntosTrabajo : undefined,
       creadoPor: req.user._id,
       primerAcceso: true
     });
@@ -115,11 +126,15 @@ const getUsers = async (req, res) => {
 // @access  Private (solo jefe)
 const updateUser = async (req, res) => {
   try {
-    const { nombre, puntoTrabajo, activo } = req.body;
+    const { nombre, activo } = req.body;
     // "roles" solo se toma en cuenta si vino explícitamente en el body
     // (array o el "rol" viejo); si no vino ninguno de los dos, no se toca.
     const rolesEnviados = (req.body.roles !== undefined || req.body.rol !== undefined)
       ? rolesDelBody(req.body)
+      : null;
+    // Mismo criterio para puntos de trabajo
+    const puntosTrabajoEnviados = (req.body.puntosTrabajo !== undefined || req.body.puntoTrabajo !== undefined)
+      ? puntosTrabajoDelBody(req.body)
       : null;
     const userId = req.params.id;
 
@@ -173,19 +188,27 @@ const updateUser = async (req, res) => {
       }
 
       const requierePuntoTrabajo = necesitaPuntoTrabajo(rolesEnviados);
-      const puntoTrabajoFinal = requierePuntoTrabajo ? (puntoTrabajo || user.puntoTrabajo) : undefined;
+      const puntosTrabajoFinal = requierePuntoTrabajo
+        ? ((puntosTrabajoEnviados && puntosTrabajoEnviados.length > 0) ? puntosTrabajoEnviados : (user.puntosTrabajo || []))
+        : [];
 
-      if (requierePuntoTrabajo && !puntoTrabajoFinal) {
+      if (requierePuntoTrabajo && puntosTrabajoFinal.length === 0) {
         return res.status(400).json({
           success: false,
-          message: 'Punto de trabajo es requerido para este rol'
+          message: 'Al menos un punto de trabajo es requerido para este rol'
         });
       }
 
       user.roles = rolesEnviados;
-      user.puntoTrabajo = puntoTrabajoFinal;
-    } else if (puntoTrabajo && necesitaPuntoTrabajo(rolesActuales)) {
-      user.puntoTrabajo = puntoTrabajo;
+      user.puntosTrabajo = puntosTrabajoFinal;
+      // Si el punto activo actual ya no está entre los asignados, se cae al
+      // primero de la lista nueva (o queda sin punto si el rol ya no lo pide)
+      user.puntoTrabajo = requierePuntoTrabajo
+        ? (puntosTrabajoFinal.includes(user.puntoTrabajo) ? user.puntoTrabajo : puntosTrabajoFinal[0])
+        : undefined;
+    } else if (puntosTrabajoEnviados && puntosTrabajoEnviados.length > 0 && necesitaPuntoTrabajo(rolesActuales)) {
+      user.puntosTrabajo = puntosTrabajoEnviados;
+      user.puntoTrabajo = puntosTrabajoEnviados.includes(user.puntoTrabajo) ? user.puntoTrabajo : puntosTrabajoEnviados[0];
     }
 
     if (typeof activo === 'boolean') user.activo = activo;

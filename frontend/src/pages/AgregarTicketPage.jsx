@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { ticketService } from '../services';
+import { ticketService, printerSettingsService } from '../services';
 import api from '../services/api';
 import Swal from 'sweetalert2';
 import { onlyAlphanumeric } from '../utils/validators';
@@ -28,6 +28,10 @@ const AgregarTicketPage = () => {
   const [form, setForm] = useState(FORM_VACIO);
   const [localidades, setLocalidades] = useState([]);
   const [cargandoLocalidades, setCargandoLocalidades] = useState(true);
+  // Colores por tipo de ticket ya configurados en Impresión ({ tipo, color }):
+  // se muestran acá de referencia para saber con qué color va a salir cada
+  // localidad al imprimirse
+  const [ticketColors, setTicketColors] = useState([]);
   const [guardando, setGuardando] = useState(false);
   const [ultimoCreado, setUltimoCreado] = useState(null);
 
@@ -138,6 +142,26 @@ const AgregarTicketPage = () => {
     };
     cargarLocalidades();
   }, []);
+
+  useEffect(() => {
+    const cargarColores = async () => {
+      try {
+        const response = await printerSettingsService.getSettings();
+        if (response.success) {
+          setTicketColors(response.data.ticketColors || []);
+        }
+      } catch (error) {
+        console.error('Error al cargar colores de impresión:', error);
+      }
+    };
+    cargarColores();
+  }, []);
+
+  const colorPorLocalidad = useMemo(() => {
+    const mapa = {};
+    ticketColors.forEach(tc => { mapa[tc.tipo] = tc.color; });
+    return mapa;
+  }, [ticketColors]);
 
   useEffect(() => {
     cargarManuales();
@@ -304,7 +328,13 @@ const AgregarTicketPage = () => {
                       {cargandoLocalidades ? 'Cargando localidades...' : 'Sin especificar (se completa al reconciliar)'}
                     </option>
                     {localidades.map(loc => (
-                      <option key={loc} value={loc}>{loc}</option>
+                      <option
+                        key={loc}
+                        value={loc}
+                        style={colorPorLocalidad[loc] ? { backgroundColor: colorPorLocalidad[loc], color: '#fff' } : undefined}
+                      >
+                        {loc}
+                      </option>
                     ))}
                     {/* Si se está editando un ticket con una localidad que ya no está
                         disponible, se agrega igual para no perderla del select */}
@@ -315,6 +345,20 @@ const AgregarTicketPage = () => {
                   <small className="form-text text-muted">
                     Si no la sabés, dejala así — se completa sola cuando se suba el CSV.
                   </small>
+                  {ticketColors.length > 0 && (
+                    <div className="d-flex flex-wrap gap-2 mt-2">
+                      {ticketColors.map(tc => (
+                        <span
+                          key={tc.tipo}
+                          className="badge"
+                          style={{ backgroundColor: tc.color, color: '#fff' }}
+                          title="Color de impresión configurado en Impresión"
+                        >
+                          {tc.tipo}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="mb-3">
@@ -333,17 +377,20 @@ const AgregarTicketPage = () => {
                   </small>
                 </div>
 
-                <div className="mb-3">
-                  <label className="form-label">Email (opcional)</label>
-                  <input
-                    type="email"
-                    className="form-control"
-                    value={form.email}
-                    onChange={(e) => handleChange('email', e.target.value)}
-                    placeholder="correo@ejemplo.com"
-                    disabled={guardando}
-                  />
-                </div>
+                {/* Campo Email deshabilitado a pedido: ya no se pide acá, se
+                    sigue completando solo al reconciliar con el CSV real.
+                    <div className="mb-3">
+                      <label className="form-label">Email (opcional)</label>
+                      <input
+                        type="email"
+                        className="form-control"
+                        value={form.email}
+                        onChange={(e) => handleChange('email', e.target.value)}
+                        placeholder="correo@ejemplo.com"
+                        disabled={guardando}
+                      />
+                    </div>
+                */}
 
                 <div className="mb-3">
                   <label className="form-label">Transaction ID *</label>

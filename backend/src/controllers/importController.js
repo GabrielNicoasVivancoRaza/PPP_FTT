@@ -1,6 +1,7 @@
 const Ticket = require('../models/Ticket');
 const AuditLog = require('../models/AuditLog');
 const PrinterSettings = require('../models/PrinterSettings');
+const PrintRequest = require('../models/PrintRequest');
 const { parseCsvBuffer, mapRowToTicket } = require('../utils/csvImportHelpers');
 const { emitTicketUpdates, getUnprintedTransactionTicketIds, resolveColor } = require('../utils/printHelpers');
 const { createOrExtendPrintRequest } = require('./printRequestController');
@@ -253,12 +254,34 @@ const importCsv = async (req, res) => {
             reconciliadoConCsv: true,
             fechaReconciliacion: ahoraReconciliacion,
             ticketIdManualOriginal: manualTicketId,
-            ticketsEnTransaccionAlReconciliar: conteoPorTransaccion.get(candidato['Transaction ID']) || 1
+            ticketsEnTransaccionAlReconciliar: conteoPorTransaccion.get(candidato['Transaction ID']) || 1,
+            // Un ticket manual ya se le entregó/canjeó en persona al momento
+            // de cargarlo a mano; el CSV solo viene a completar su Ticket ID
+            // real más tarde. No hace falta imprimirlo (ni seguir marcado
+            // como pendiente en la tabla) solo porque recién ahora se le
+            // asignó el Ticket ID oficial.
+            impreso: true,
+            fechaImpresion: ahoraReconciliacion,
+            pendienteImpresion: false
           }
         }
       );
       const actualizado = await TicketModel.findOne({ 'Ticket ID': candidato['Ticket ID'] });
       if (actualizado) ticketsReconciliados.push(actualizado);
+    }
+
+    // Si el manual llegó a encolarse para impresión (siempre pasa al
+    // crearlo), esa solicitud todavía tiene el Ticket ID sintético viejo —
+    // que ya no existe más (arriba se reemplazó por el real). Se limpia esa
+    // referencia para que no quede una entrada fantasma en la cola del
+    // impresor apuntando a un ticket que ya no hace falta imprimir.
+    if (reconciliaciones.length > 0) {
+      const manualTicketIdsReconciliados = reconciliaciones.map(r => r.manualTicketId);
+      await PrintRequest.updateMany(
+        { estado: 'pendiente', ticketIds: { $in: manualTicketIdsReconciliados } },
+        { $pull: { ticketIds: { $in: manualTicketIdsReconciliados } } }
+      );
+      await PrintRequest.deleteMany({ estado: 'pendiente', ticketIds: { $size: 0 } });
     }
 
     // De acá en adelante, los candidatos ya reconciliados NO se procesan
@@ -734,34 +757,40 @@ const crearTicketManual = async (req, res) => {
 
     // Driver nativo para no perder campos no declarados en el schema
     await TicketModel.collection.insertOne(doc);
-    const creado = await TicketModel.findOne({ 'Ticket ID': ticketIdManual });
 
     const io = req.app.get('io');
-    emitTicketUpdates(io, [creado], 'ticket-manual');
 
     // Encolar para impresión (mismo mecanismo que usa el canje de staff): un
     // ticket agregado a mano nunca pasó por ninguna tanda de impresión
-    // física previa, así que siempre hace falta imprimirlo por la cola.
+    // física previa, así que SIEMPRE hace falta imprimirlo por la cola — sin
+    // importar si el toggle general de "impresión habilitada" está prendido
+    // o apagado (son dos cosas distintas: ese toggle controla el flujo
+    // automático normal, pero un ticket manual nunca tuvo impresión física
+    // conocida y tiene que ir a la cola sí o sí).
     try {
       const printerSettings = await PrinterSettings.getSettings();
-      if (printerSettings.enabled) {
-        const tipo = doc['Ticket'];
-        const ticketIdsTransaccion = await getUnprintedTransactionTicketIds(TicketModel, doc['Transaction ID'], tipo);
-        if (ticketIdsTransaccion.length > 0) {
-          await createOrExtendPrintRequest({
-            transactionId: doc['Transaction ID'],
-            ticketIds: ticketIdsTransaccion,
-            tipos: tipo ? [tipo] : [],
-            color: resolveColor(printerSettings.ticketColors, tipo),
-            puntoTrabajo: req.user.puntoTrabajo,
-            usuarioId: req.user._id,
-            io
-          });
-        }
+      const tipo = doc['Ticket'];
+      const ticketIdsTransaccion = await getUnprintedTransactionTicketIds(TicketModel, doc['Transaction ID'], tipo);
+      if (ticketIdsTransaccion.length > 0) {
+        await createOrExtendPrintRequest({
+          transactionId: doc['Transaction ID'],
+          ticketIds: ticketIdsTransaccion,
+          tipos: tipo ? [tipo] : [],
+          color: resolveColor(printerSettings.ticketColors, tipo),
+          puntoTrabajo: req.user.puntoTrabajo,
+          usuarioId: req.user._id,
+          io
+        });
       }
     } catch (printError) {
       console.error('Error al encolar impresión del ticket manual:', printError);
     }
+
+    // Se recarga DESPUÉS de encolar para que la respuesta y el evento de
+    // socket ya reflejen "pendienteImpresion" actualizado (si no, saldrían
+    // con el valor viejo, de antes de encolar)
+    const creado = await TicketModel.findOne({ 'Ticket ID': ticketIdManual });
+    emitTicketUpdates(io, [creado], 'ticket-manual');
 
     try {
       await AuditLog.create({
