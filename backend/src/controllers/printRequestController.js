@@ -62,8 +62,13 @@ const getQueue = async (req, res) => {
     // Un impresor_cola solo debe ver e imprimir lo de SU punto de trabajo —
     // antes le llegaban solicitudes de cualquier punto de venta. El jefe sí
     // ve todo (supervisión general).
+    // OJO: las solicitudes sin punto asignado (p. ej. tickets agregados a
+    // mano por jefe/importador, que no tienen punto de trabajo) NO deben
+    // quedar invisibles para todo el mundo salvo el jefe — se le muestran a
+    // cualquier impresor_cola como "sin dueño específico", junto a las de su
+    // propio punto.
     if (!hasRole(req.user, 'jefe')) {
-      query.puntoTrabajo = req.user.puntoTrabajo;
+      query.puntoTrabajo = { $in: [req.user.puntoTrabajo, null] };
     }
 
     // Orden: pendientes por fecha de solicitud, enviadas por fecha de envío
@@ -124,8 +129,11 @@ const sendToPrint = async (req, res) => {
     }
 
     // Un impresor_cola solo puede enviar solicitudes de SU punto de trabajo
-    // (evita que actúe sobre IDs de otro punto que haya podido obtener).
-    const filtroPunto = hasRole(req.user, 'jefe') ? {} : { puntoTrabajo: req.user.puntoTrabajo };
+    // (evita que actúe sobre IDs de otro punto que haya podido obtener), más
+    // las que no tienen punto asignado (ver mismo criterio en getQueue).
+    const filtroPunto = hasRole(req.user, 'jefe')
+      ? {}
+      : { puntoTrabajo: { $in: [req.user.puntoTrabajo, null] } };
 
     const now = new Date();
     const result = await PrintRequest.updateMany(
@@ -181,8 +189,11 @@ const confirmPrint = async (req, res) => {
 
     // Un impresor_cola solo puede confirmar solicitudes de SU punto de
     // trabajo (evita que actúe sobre IDs de otro punto que haya podido
-    // obtener).
-    const filtroPunto = hasRole(req.user, 'jefe') ? {} : { puntoTrabajo: req.user.puntoTrabajo };
+    // obtener), más las que no tienen punto asignado (ver mismo criterio en
+    // getQueue).
+    const filtroPunto = hasRole(req.user, 'jefe')
+      ? {}
+      : { puntoTrabajo: { $in: [req.user.puntoTrabajo, null] } };
 
     const requests = await PrintRequest.find({
       _id: { $in: requestIds },
