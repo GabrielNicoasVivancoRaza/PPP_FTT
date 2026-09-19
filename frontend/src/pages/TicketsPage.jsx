@@ -1406,7 +1406,7 @@ const TicketsPage = () => {
       case 'eliminado':
         return 'table-danger'; // Rojo: fraude o eliminado del evento
       case 'informacion':
-        return 'table-secondary'; // Gris: nota informativa del jefe
+        return 'row-informacion'; // Gris fuerte: nota informativa del jefe
       case 'sinImprimir':
         return 'table-warning'; // Amarillo: todavía no está impreso
       case 'completed':

@@ -211,3 +211,15 @@ a, .nav-link { transition: color .15s ease; }
   letter-spacing: 0.5px;
   color: var(--ftt-black);
 }
+
+/* Fila con nota de "Información" (gris más fuerte que table-secondary de
+   Bootstrap, para que no se confunda con el gris claro del hover de las
+   filas normales). */
+.table > tbody > tr.row-informacion > * {
+  --bs-table-bg: #adb5bd;
+  --bs-table-bg-type: #adb5bd;
+  --bs-table-hover-bg: #98a1aa;
+  --bs-table-color: #212529;
+  color: #212529;
+  border-color: #939ba3;
+}
