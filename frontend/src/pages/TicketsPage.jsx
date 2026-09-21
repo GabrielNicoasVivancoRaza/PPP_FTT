@@ -1394,7 +1394,10 @@ const TicketsPage = () => {
     // imprimir, esté o no habilitada la impresión por cola en general —
     // son dos cosas distintas, así que esto manda incluso sobre "completed"
     if (ticket.pendienteImpresion) return 'sinImprimir';
-    if (ticket.canjeado && (ticket.impreso || !printerEnabled)) return 'completed';
+    // Todo canjeado va en verde, tenga o no "impreso": los canjeados antes
+    // de habilitar la impresión por cola nunca quedaron marcados impresos, y
+    // aun así ya están entregados (el pendiente de imprimir se ve arriba).
+    if (ticket.canjeado) return 'completed';
     if (ticket.impreso) return 'printed';
     return 'normal';
   };
