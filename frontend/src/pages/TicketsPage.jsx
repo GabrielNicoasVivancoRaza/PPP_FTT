@@ -34,6 +34,7 @@ const TicketsPage = () => {
   const [showFiltrosAvanzados, setShowFiltrosAvanzados] = useState(false);
   const [filtroFraude, setFiltroFraude] = useState('');
   const [filtroInformacion, setFiltroInformacion] = useState('');
+  const [filtroCanjeado, setFiltroCanjeado] = useState('');
   const [filtroLocalidad, setFiltroLocalidad] = useState('');
   const [filtroUsuarioCanje, setFiltroUsuarioCanje] = useState('');
   const [filtroFechaDesde, setFiltroFechaDesde] = useState('');
@@ -425,7 +426,7 @@ const TicketsPage = () => {
         clearTimeout(searchTimeout);
       }
     };
-  }, [search, seatSearch, ticketIdSearch, filtroFraude, filtroInformacion, filtroLocalidad, filtroUsuarioCanje, filtroFechaDesde, filtroFechaHasta]);
+  }, [search, seatSearch, ticketIdSearch, filtroFraude, filtroInformacion, filtroCanjeado, filtroLocalidad, filtroUsuarioCanje, filtroFechaDesde, filtroFechaHasta]);
 
   // Obtener colección activa
   useEffect(() => {
@@ -561,6 +562,7 @@ const TicketsPage = () => {
         ...(sortBy && { sortOrder }),
         ...(filtroFraude && { fraude: filtroFraude }),
         ...(filtroInformacion && { informacion: filtroInformacion }),
+        ...(filtroCanjeado && { canjeado: filtroCanjeado }),
         ...(filtroLocalidad && { localidad: filtroLocalidad }),
         ...(filtroUsuarioCanje && { usuarioCanje: filtroUsuarioCanje }),
         ...(filtroFechaDesde && { fechaCanjeDesde: filtroFechaDesde }),
@@ -2133,6 +2135,18 @@ const TicketsPage = () => {
                       </select>
                     </div>
                     <div className="col-md-3">
+                      <label className="form-label small text-muted">Canjeado</label>
+                      <select
+                        className="form-select form-select-sm"
+                        value={filtroCanjeado}
+                        onChange={(e) => setFiltroCanjeado(e.target.value)}
+                      >
+                        <option value="">Todos</option>
+                        <option value="true">Canjeados</option>
+                        <option value="false">No canjeados</option>
+                      </select>
+                    </div>
+                    <div className="col-md-3">
                       <label className="form-label small text-muted">Localidad</label>
                       <select
                         className="form-select form-select-sm"
@@ -2183,6 +2197,7 @@ const TicketsPage = () => {
                         onClick={() => {
                           setFiltroFraude('');
                           setFiltroInformacion('');
+                          setFiltroCanjeado('');
                           setFiltroLocalidad('');
                           setFiltroUsuarioCanje('');
                           setFiltroFechaDesde('');

@@ -724,6 +724,24 @@ const crearTicketManual = async (req, res) => {
       });
     }
 
+    // Si esa Transaction ID + cédula YA está cargada con datos reales (de un
+    // CSV importado antes), no tiene sentido crear un manual: nunca se va a
+    // poder reconciliar con nada (su Ticket ID real ya existe como
+    // documento aparte) y queda duplicado para siempre — esto es justo lo
+    // que generó ~40 tickets duplicados antes de este chequeo.
+    const yaExisteReal = await TicketModel.findOne({
+      'Transaction ID': transactionId.trim(),
+      'Numero de Cedula:': cedula.trim(),
+      creadoManualmente: { $ne: true },
+      eliminado: { $ne: true }
+    });
+    if (yaExisteReal) {
+      return res.status(409).json({
+        success: false,
+        message: `Esa persona ya está cargada con datos reales (Ticket ID ${yaExisteReal['Ticket ID']}, localidad ${yaExisteReal['Ticket']}). No hace falta agregarla a mano — buscala en la tabla de Tickets.`
+      });
+    }
+
     // El CSV trae nombre y apellido separados; acá solo se pide "Nombre",
     // así que se parte por el primer espacio para mantener la misma forma.
     const nombreLimpio = nombre.trim().replace(/\s+/g, ' ');
@@ -894,6 +912,23 @@ const editarTicketManual = async (req, res) => {
       return res.status(409).json({
         success: false,
         message: 'Ya hay otro ticket manual con esa Transaction ID y esa cédula'
+      });
+    }
+
+    // Mismo chequeo que al crear: si esa Transaction ID + cédula ya está
+    // cargada con datos reales, editar a esos valores dejaría este manual
+    // duplicado para siempre (nunca se va a poder reconciliar)
+    const yaExisteReal = await TicketModel.findOne({
+      'Ticket ID': { $ne: ticketId },
+      'Transaction ID': transactionId.trim(),
+      'Numero de Cedula:': cedula.trim(),
+      creadoManualmente: { $ne: true },
+      eliminado: { $ne: true }
+    });
+    if (yaExisteReal) {
+      return res.status(409).json({
+        success: false,
+        message: `Esa persona ya está cargada con datos reales (Ticket ID ${yaExisteReal['Ticket ID']}, localidad ${yaExisteReal['Ticket']}). No hace falta este manual — buscala en la tabla de Tickets.`
       });
     }
 

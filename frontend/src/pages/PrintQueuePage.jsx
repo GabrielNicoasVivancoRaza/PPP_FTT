@@ -18,6 +18,7 @@ const PrintQueuePage = () => {
   const [enviados, setEnviados] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(new Set());
+  const [selectedEnviados, setSelectedEnviados] = useState(new Set());
   const [busy, setBusy] = useState(false);
 
   const fetchPendientes = useCallback(async () => {
@@ -78,6 +79,17 @@ const PrintQueuePage = () => {
     };
   }, [token, fetchPendientes, fetchEnviados]);
 
+  // Si una solicitud "enviada" seleccionada desaparece de la lista (otro
+  // impresor la confirmó/reintentó desde otra pantalla), se saca de la
+  // selección para no dejar IDs fantasma
+  useEffect(() => {
+    setSelectedEnviados(prev => {
+      const vigentes = new Set(enviados.map(r => r._id));
+      const next = new Set([...prev].filter(id => vigentes.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [enviados]);
+
   // Agrupar solicitudes pendientes por color
   const grupos = useMemo(() => {
     const mapa = new Map();
@@ -110,6 +122,20 @@ const PrintQueuePage = () => {
       ids.forEach(id => todosSeleccionados ? next.delete(id) : next.add(id));
       return next;
     });
+  };
+
+  const toggleSelectEnviado = (id) => {
+    setSelectedEnviados(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectTodosEnviados = () => {
+    const ids = enviados.map(r => r._id);
+    const todosSeleccionados = ids.length > 0 && ids.every(id => selectedEnviados.has(id));
+    setSelectedEnviados(todosSeleccionados ? new Set() : new Set(ids));
   };
 
   // Paso 1: enviar a imprimir (abre SquadUp y pasa la(s) solicitud(es) a "Enviados")
@@ -154,12 +180,19 @@ const PrintQueuePage = () => {
     enviarAImprimir(reqs);
   };
 
-  // Reintentar: vuelve a abrir SquadUp para esa transacción, sigue en "Enviados"
-  const volverAImprimir = async (req) => {
-    window.open(`${SQUADUP_PRINT_URL}${req.transactionId}`, '_blank');
+  // Reintentar: vuelve a abrir SquadUp para esas transacciones, siguen en "Enviados"
+  const volverAImprimir = async (reqs) => {
+    if (reqs.length === 0) return;
+    const transactionIds = [...new Set(reqs.map(r => r.transactionId))];
+    window.open(`${SQUADUP_PRINT_URL}${transactionIds.join(',')}`, '_blank');
     try {
       setBusy(true);
-      await printRequestService.sendToPrint([req._id]);
+      await printRequestService.sendToPrint(reqs.map(r => r._id));
+      setSelectedEnviados(prev => {
+        const next = new Set(prev);
+        reqs.forEach(r => next.delete(r._id));
+        return next;
+      });
       await fetchEnviados();
     } catch (error) {
       console.error('Error al reintentar impresión:', error);
@@ -170,15 +203,22 @@ const PrintQueuePage = () => {
   };
 
   // Paso 2: confirmar que la impresión salió bien -> pasa a Impresos
-  const confirmarCorrecta = async (req) => {
+  const confirmarCorrecta = async (reqs) => {
+    if (reqs.length === 0) return;
+    const totalTickets = reqs.reduce((sum, r) => sum + r.ticketIds.length, 0);
     try {
       setBusy(true);
-      const response = await printRequestService.confirmPrint([req._id]);
+      const response = await printRequestService.confirmPrint(reqs.map(r => r._id));
       if (response.success) {
-        setEnviados(prev => prev.filter(r => r._id !== req._id));
+        setEnviados(prev => prev.filter(r => !reqs.some(sel => sel._id === r._id)));
+        setSelectedEnviados(prev => {
+          const next = new Set(prev);
+          reqs.forEach(r => next.delete(r._id));
+          return next;
+        });
         Swal.fire({
           title: 'Impresión confirmada',
-          text: `${req.ticketIds.length} ticket(s) marcados como impresos`,
+          text: `${totalTickets} ticket(s) marcados como impresos`,
           icon: 'success',
           timer: 1800,
           showConfirmButton: false
@@ -371,9 +411,30 @@ const PrintQueuePage = () => {
 
       {activeTab === 'enviados' && (
         <>
-          <p className="text-muted">
-            Confirme cada solicitud una vez que verifique que el boleto salió bien de la impresora física.
-          </p>
+          <div className="d-flex justify-content-between align-items-center mb-3">
+            <p className="text-muted mb-0">
+              Confirme una vez que verifique que el/los boleto(s) salieron bien de la impresora física.
+            </p>
+            <div className="d-flex gap-2">
+              <button
+                className="btn btn-outline-warning"
+                disabled={selectedEnviados.size === 0 || busy}
+                onClick={() => volverAImprimir(enviados.filter(r => selectedEnviados.has(r._id)))}
+              >
+                <i className="fas fa-redo me-2"></i>
+                Volver a imprimir seleccionados ({selectedEnviados.size})
+              </button>
+              <button
+                className="btn btn-success"
+                disabled={selectedEnviados.size === 0 || busy}
+                onClick={() => confirmarCorrecta(enviados.filter(r => selectedEnviados.has(r._id)))}
+              >
+                <i className="fas fa-check me-2"></i>
+                Confirmar seleccionados ({selectedEnviados.size})
+              </button>
+            </div>
+          </div>
+
           {enviados.length === 0 ? (
             <div className="alert alert-secondary">No hay solicitudes enviadas esperando confirmación.</div>
           ) : (
@@ -383,6 +444,15 @@ const PrintQueuePage = () => {
                   <table className="table table-hover mb-0 align-middle">
                     <thead>
                       <tr>
+                        <th style={{ width: 40 }}>
+                          <input
+                            type="checkbox"
+                            className="form-check-input"
+                            checked={enviados.length > 0 && enviados.every(r => selectedEnviados.has(r._id))}
+                            onChange={toggleSelectTodosEnviados}
+                            title="Seleccionar todos"
+                          />
+                        </th>
                         <th>Transaction ID</th>
                         <th>Tipo</th>
                         <th>Tickets</th>
@@ -395,6 +465,14 @@ const PrintQueuePage = () => {
                     <tbody>
                       {enviados.map(req => (
                         <tr key={req._id}>
+                          <td>
+                            <input
+                              type="checkbox"
+                              className="form-check-input"
+                              checked={selectedEnviados.has(req._id)}
+                              onChange={() => toggleSelectEnviado(req._id)}
+                            />
+                          </td>
                           <td className="fw-semibold">{req.transactionId}</td>
                           <td>
                             {req.color ? (
@@ -412,14 +490,14 @@ const PrintQueuePage = () => {
                               <button
                                 className="btn btn-sm btn-outline-warning"
                                 disabled={busy}
-                                onClick={() => volverAImprimir(req)}
+                                onClick={() => volverAImprimir([req])}
                               >
                                 <i className="fas fa-redo me-1"></i>Volver a Imprimir
                               </button>
                               <button
                                 className="btn btn-sm btn-success"
                                 disabled={busy}
-                                onClick={() => confirmarCorrecta(req)}
+                                onClick={() => confirmarCorrecta([req])}
                               >
                                 <i className="fas fa-check me-1"></i>Impresión Correcta
                               </button>

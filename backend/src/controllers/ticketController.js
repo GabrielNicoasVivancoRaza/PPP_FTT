@@ -19,7 +19,7 @@ const getTickets = async (req, res) => {
       seatSearch,
       ticketIdSearch,
       puntoTrabajo,
-      impreso,
+      canjeado,
       fraude,
       informacion,
       localidad,
@@ -96,8 +96,8 @@ const getTickets = async (req, res) => {
 
     // Filtro por estado de canje. Usar $ne:true (no "false") para incluir
     // tickets importados sin el campo "canjeado" definido en Mongo.
-    if (impreso !== undefined) {
-      query.canjeado = impreso === 'true' ? true : { $ne: true };
+    if (canjeado !== undefined) {
+      query.canjeado = canjeado === 'true' ? true : { $ne: true };
     }
 
     // Filtro por localidad (campo "Ticket") — jefe
