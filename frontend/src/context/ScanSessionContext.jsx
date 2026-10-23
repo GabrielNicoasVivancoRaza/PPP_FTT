@@ -3,8 +3,15 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import api from '../services/api';
 import socketService from '../services/socket';
+import { contadorEntradasService } from '../services';
 import Swal from 'sweetalert2';
 import { hasRole } from '../utils/roles';
+
+// Mismo QR "quemado" que reconoce ScanTicketPage: un único código fijo que
+// no corresponde a ningún ticket real. Cuando el celular (sin sesión
+// iniciada) lo reenvía por este canal, es la computadora (sí logueada) la
+// que suma al contador — nunca se busca como ticket.
+const CODIGO_FIJO = 'HJKLASHSGDHASJSHYDJDHagshHHgfaj5611638430000/200A';
 
 /**
  * Sesión de escaneo con el celular.
@@ -98,6 +105,29 @@ export const ScanSessionProvider = ({ children }) => {
       // Evita procesar dos códigos a la vez si llegan muy seguidos
       if (!data?.code || procesandoRef.current) return;
       procesandoRef.current = true;
+
+      // QR fijo reenviado desde el celular: no es un ticket, solo suma al
+      // contador (la computadora sí está logueada, a diferencia del celular)
+      if (data.code === CODIGO_FIJO) {
+        try {
+          const response = await contadorEntradasService.incrementar();
+          if (response.success) {
+            Swal.fire({
+              toast: true,
+              position: 'top-end',
+              icon: 'success',
+              title: `Entrada contada (${response.data.contador})`,
+              timer: 1200,
+              showConfirmButton: false
+            });
+          }
+        } catch (error) {
+          console.error('Error al sumar al contador de entradas:', error);
+        } finally {
+          procesandoRef.current = false;
+        }
+        return;
+      }
 
       try {
         const response = await api.get(`/tickets/barcode/${encodeURIComponent(data.code)}`);

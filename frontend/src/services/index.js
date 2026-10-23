@@ -245,6 +245,25 @@ export const printerSettingsService = {
   }
 };
 
+export const contadorEntradasService = {
+  // Contador de entradas leídas con el QR fijo (vive en su propia colección,
+  // separado de los tickets)
+  getContador: async () => {
+    const response = await api.get('/contador-entradas');
+    return response.data;
+  },
+
+  incrementar: async () => {
+    const response = await api.post('/contador-entradas/incrementar');
+    return response.data;
+  },
+
+  setContador: async (contador) => {
+    const response = await api.put('/contador-entradas', { contador });
+    return response.data;
+  }
+};
+
 export const printRequestService = {
   // Obtener solicitudes de impresión por estado: pendiente | enviada | completada (impresor_cola, jefe)
   getQueue: async (estado = 'pendiente', params = {}) => {

@@ -18,6 +18,7 @@ const puntoVentaRoutes = require('./routes/puntoVentaRoutes');
 const printerSettingsRoutes = require('./routes/printerSettings');
 const printRequestRoutes = require('./routes/printRequests');
 const sobresRoutes = require('./routes/sobres');
+const contadorEntradasRoutes = require('./routes/contadorEntradas');
 
 const app = express();
 const server = http.createServer(app);
@@ -28,6 +29,19 @@ connectDB();
 // Security middleware
 app.use(helmet());
 
+// Trust proxy: Render tiene más de un salto de proxy interno entre el
+// usuario y esta app. Con "1" (un solo salto confiado), Express se queda
+// con la IP interna del proxy de Render (10.x.x.x, igual para todos)
+// en vez de la IP real del cliente. Con "true" se confía en toda la
+// cadena X-Forwarded-For y se toma la primera IP (la del cliente real).
+// Es seguro acá porque Render es la única entrada posible a esta app.
+// OJO: solo tiene sentido en producción — en local (npm run dev) no hay
+// ningún proxy real delante, así que "true" ahí sería confiar en un
+// X-Forwarded-For que cualquiera podría mandar a mano.
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', true);
+}
+
 // Rate limiting - Más permisivo para evitar bloqueos
 const limiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minuto (reducido de 15 minutos)
@@ -35,6 +49,14 @@ const limiter = rateLimit({
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  // express-rate-limit valida que "trust proxy: true" sea riesgoso (deja
+  // falsificar la IP vía X-Forwarded-For) y por defecto tira un
+  // ValidationError en cada request. Ya evaluamos ese riesgo arriba y lo
+  // aceptamos a propósito (Render es la única entrada). La versión
+  // instalada (6.x) no permite apagar solo esa validación puntual — el
+  // objeto granular {trustProxy:false} es de la v7 y acá se ignora porque
+  // "validate" solo admite boolean — así que se apagan todas con `false`.
+  validate: false,
   // Excluir rutas de verificación de cambios del rate limit
   skip: (req) => {
     return req.url.includes('/check-changes') || req.url.includes('/health');
@@ -42,9 +64,8 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// CORS (permitir frontend en Render y localhost en desarrollo)
+// CORS (permitir frontend en Render y cualquier origin en desarrollo local)
 const allowRenderWildcard = /\.onrender\.com$/;
-const devOrigins = ['http://localhost:3000', 'http://localhost:5173'];
 const configuredOrigins = (process.env.CORS_ORIGIN || '')
   .split(',')
   .map(o => o.trim())
@@ -55,10 +76,11 @@ app.use(cors({
     // Permitir llamadas sin origin (por ejemplo, herramientas internas)
     if (!origin) return callback(null, true);
 
+    // En desarrollo local no hay nada que proteger: se acepta cualquier
+    // origin para no tener que mantener una lista de puertos (Vite, el
+    // celular como escáner remoto apuntando a otra IP de la red, etc.)
     if (process.env.NODE_ENV !== 'production') {
-      return devOrigins.includes(origin)
-        ? callback(null, true)
-        : callback(new Error('Not allowed by CORS'));
+      return callback(null, true);
     }
 
     const allowed = configuredOrigins.includes(origin) || allowRenderWildcard.test(origin);
@@ -75,14 +97,6 @@ app.options('*', cors());
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
-
-// Trust proxy: Render tiene más de un salto de proxy interno entre el
-// usuario y esta app. Con "1" (un solo salto confiado), Express se queda
-// con la IP interna del proxy de Render (10.x.x.x, igual para todos)
-// en vez de la IP real del cliente. Con "true" se confía en toda la
-// cadena X-Forwarded-For y se toma la primera IP (la del cliente real).
-// Es seguro acá porque Render es la única entrada posible a esta app.
-app.set('trust proxy', true);
 
 // Health check endpoints (BEFORE other routes)
 app.get('/health', (req, res) => {
@@ -117,6 +131,7 @@ app.use('/api/puntos-venta', puntoVentaRoutes);
 app.use('/api/printer-settings', printerSettingsRoutes);
 app.use('/api/print-requests', printRequestRoutes);
 app.use('/api/sobres', sobresRoutes);
+app.use('/api/contador-entradas', contadorEntradasRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {

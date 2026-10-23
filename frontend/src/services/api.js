@@ -42,6 +42,7 @@ const getCacheType = (url) => {
   if (url.includes('/queue') || url.includes('/stats')) return 'realtime';
   if (url.includes('/impresion')) return 'realtime';
   if (url.includes('/printer-settings') || url.includes('/print-requests')) return 'realtime';
+  if (url.includes('/contador-entradas')) return 'realtime';
   return 'static';
 };
 

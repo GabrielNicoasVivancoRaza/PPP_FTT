@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useScanSession } from '../context/ScanSessionContext';
 import api from '../services/api';
 import socketService from '../services/socket';
+import { contadorEntradasService } from '../services';
 import { BrowserMultiFormatReader } from '@zxing/browser';
 import QRCode from 'qrcode';
 import Swal from 'sweetalert2';
@@ -12,6 +13,14 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 
 const ROLES_PERMITIDOS = ['jefe', 'staff', 'impresor_solo', 'impresor_cola'];
 const CODE_COOLDOWN_MS = 3000; // evita reprocesar el mismo código repetidamente
+
+// Entrada con un único QR "quemado" (siempre el mismo texto, no corresponde
+// a ningún ticket real en SquadUp). Se detecta ANTES de llamar a la API de
+// tickets o de mandarlo por socket de escaneo: nunca toca la colección de
+// tickets. El conteo sí se guarda en el servidor, pero en su propia
+// colección separada (ContadorEntradas), para poder verlo/actualizarlo
+// desde cualquier dispositivo sin tocar los datos reales.
+const CODIGO_FIJO = 'HJKLASHSGDHASJSHYDJDHagshHHgfaj5611638430000/200A';
 
 // Estilos del cuadro de apuntado (viewfinder) que se superpone al video de
 // la cámara para indicar dónde centrar el código QR
@@ -98,6 +107,10 @@ const ScanTicketPage = () => {
   const [resultado, setResultado] = useState(null); // { ticket, transactionCount } - vista para impresor_cola
   const [enviados, setEnviados] = useState(0); // # de códigos reenviados desde el celular
   const [errorCamara, setErrorCamara] = useState('');
+  // Contador del QR fijo: vive en el servidor (colección ContadorEntradas,
+  // separada de los tickets), así se ve y se puede corregir desde
+  // cualquier dispositivo con sesión
+  const [contadorFijo, setContadorFijo] = useState(0);
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -119,6 +132,107 @@ const ScanTicketPage = () => {
     lastCodeRef.current = { code: text, time: ahora };
     return false;
   };
+
+  // Suma 1 al contador del QR fijo en el servidor y avisa con un toast
+  // chiquito, sin interrumpir el escaneo de la siguiente entrada
+  const registrarEntradaFija = async () => {
+    try {
+      const response = await contadorEntradasService.incrementar();
+      if (response.success) {
+        setContadorFijo(response.data.contador);
+        Swal.fire({
+          toast: true,
+          position: 'top-end',
+          icon: 'success',
+          title: `Entrada contada (${response.data.contador})`,
+          timer: 1200,
+          showConfirmButton: false
+        });
+      }
+    } catch (error) {
+      console.error('Error al sumar al contador de entradas:', error);
+      Swal.fire({
+        toast: true,
+        position: 'top-end',
+        icon: 'error',
+        title: 'No se pudo contar esta entrada (sin conexión con el servidor)',
+        timer: 2500,
+        showConfirmButton: false
+      });
+    }
+  };
+
+  const reiniciarContadorFijo = async () => {
+    const { isConfirmed } = await Swal.fire({
+      title: 'Reiniciar contador',
+      text: 'Esto vuelve el contador de entradas a 0 para todos (queda guardado en el servidor).',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, reiniciar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#dc3545'
+    });
+    if (!isConfirmed) return;
+    try {
+      const response = await contadorEntradasService.setContador(0);
+      if (response.success) setContadorFijo(response.data.contador);
+    } catch (error) {
+      console.error('Error al reiniciar contador de entradas:', error);
+      Swal.fire('Error', 'No se pudo reiniciar el contador', 'error');
+    }
+  };
+
+  // Corrección manual: permite fijar el contador a un número exacto (por
+  // ejemplo, si se contó de más o de menos a mano en la puerta)
+  const editarContadorFijo = async () => {
+    const { value: valor, isConfirmed } = await Swal.fire({
+      title: 'Editar contador',
+      input: 'number',
+      inputLabel: 'Nuevo valor del contador de entradas',
+      inputValue: contadorFijo,
+      inputAttributes: { min: 0, step: 1 },
+      showCancelButton: true,
+      confirmButtonText: 'Guardar',
+      cancelButtonText: 'Cancelar',
+      inputValidator: (v) => {
+        if (v === '' || v === null || Number(v) < 0 || !Number.isInteger(Number(v))) {
+          return 'Ingresá un número entero mayor o igual a 0';
+        }
+      }
+    });
+    if (!isConfirmed) return;
+    try {
+      const response = await contadorEntradasService.setContador(Number(valor));
+      if (response.success) setContadorFijo(response.data.contador);
+    } catch (error) {
+      console.error('Error al editar contador de entradas:', error);
+      Swal.fire('Error', 'No se pudo actualizar el contador', 'error');
+    }
+  };
+
+  // Cargar el contador actual al entrar a la página, y mantenerlo
+  // sincronizado en vivo si se actualiza desde otro dispositivo. El celular
+  // en modo remoto no tiene sesión iniciada, así que no puede pedir el
+  // valor inicial por API (eso requiere login) — pero sí recibe las
+  // actualizaciones en vivo por socket, que no necesitan autenticación.
+  useEffect(() => {
+    if (token) {
+      const cargarContador = async () => {
+        try {
+          const response = await contadorEntradasService.getContador();
+          if (response.success) setContadorFijo(response.data.contador);
+        } catch (error) {
+          console.error('Error al cargar contador de entradas:', error);
+        }
+      };
+      cargarContador();
+    }
+
+    socketService.connect(token);
+    const onContadorActualizado = (data) => setContadorFijo(data.contador);
+    socketService.on('contador-entradas-actualizado', onContadorActualizado);
+    return () => socketService.off('contador-entradas-actualizado', onContadorActualizado);
+  }, [token]);
 
   // --- Búsqueda del ticket por código y manejo según rol ---
   const buscarTicket = useCallback(async (barcode) => {
@@ -167,12 +281,25 @@ const ScanTicketPage = () => {
 
   const iniciarCamaraLocal = () => {
     setPantalla('camara-local');
-    setTimeout(() => iniciarCamara((text) => buscarTicket(text)), 150);
+    setTimeout(() => iniciarCamara((text) => {
+      // QR fijo: esta pantalla SÍ tiene sesión iniciada, así que suma
+      // directo contra la API. No pasa por /tickets ni toca esa colección.
+      if (text === CODIGO_FIJO) {
+        registrarEntradaFija();
+        return;
+      }
+      buscarTicket(text);
+    }), 150);
   };
 
   const iniciarCamaraCelular = useCallback(() => {
     setTimeout(() => {
       iniciarCamara((text) => {
+        // El celular (modo remoto) no tiene sesión iniciada, así que no
+        // puede llamar a la API del contador directamente: se manda igual
+        // que cualquier código, por el mismo canal de socket, y es la
+        // computadora (sí logueada, ver ScanSessionContext) la que detecta
+        // que es el código fijo y hace el incremento real.
         socketService.emitScanDetected(sessionCode, text);
         setEnviados(n => n + 1);
       });
@@ -266,8 +393,19 @@ const ScanTicketPage = () => {
               <video ref={videoRef} style={{ width: '100%', display: 'block', backgroundColor: '#000' }} muted playsInline />
               <ScanFrame />
             </div>
-            <div className="text-center mt-3">
+            <div className="text-center mt-3 d-flex flex-column align-items-center gap-2">
               <span className="badge bg-success fs-6">{enviados} código(s) enviado(s)</span>
+              <span className="badge bg-primary fs-6">
+                <i className="fas fa-ticket me-1"></i>Entradas contadas: {contadorFijo}
+              </span>
+              <div className="d-flex gap-2">
+                <button className="btn btn-sm btn-outline-secondary" onClick={editarContadorFijo}>
+                  Editar
+                </button>
+                <button className="btn btn-sm btn-outline-secondary" onClick={reiniciarContadorFijo}>
+                  Reiniciar
+                </button>
+              </div>
             </div>
           </>
         )}
@@ -294,9 +432,22 @@ const ScanTicketPage = () => {
 
   return (
     <div className="container-fluid">
-      <div className="mb-4">
-        <h2 className="mb-1">Escanear Ticket</h2>
-        <p className="text-muted mb-0">Busca un ticket leyendo su código de barras/QR en vez de buscarlo manualmente.</p>
+      <div className="mb-4 d-flex justify-content-between align-items-start flex-wrap gap-2">
+        <div>
+          <h2 className="mb-1">Escanear Ticket</h2>
+          <p className="text-muted mb-0">Busca un ticket leyendo su código de barras/QR en vez de buscarlo manualmente.</p>
+        </div>
+        <div className="d-flex align-items-center gap-2">
+          <span className="badge bg-primary fs-6" title="Entradas contadas con el QR fijo (guardado en el servidor, en su propia colección)">
+            <i className="fas fa-ticket me-1"></i>Entradas contadas: {contadorFijo}
+          </span>
+          <button className="btn btn-sm btn-outline-secondary" onClick={editarContadorFijo}>
+            Editar
+          </button>
+          <button className="btn btn-sm btn-outline-secondary" onClick={reiniciarContadorFijo}>
+            Reiniciar
+          </button>
+        </div>
       </div>
 
       {pantalla === 'elegir' && (
