@@ -3,9 +3,10 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import socketService from '../services/socket';
-import { printerSettingsService, ticketService, sobresService } from '../services';
+import { printerSettingsService, canjeSettingsService, ticketService, sobresService } from '../services';
 import { useScanSession } from '../context/ScanSessionContext';
-import { getCedula, getLast4, getNombreCompleto, normalizarNombreParaSobre } from '../utils/ticketFields';
+import ValidacionEscaneoModal from '../components/ValidacionEscaneoModal';
+import { getCedula, getLast4, getNombreCompleto, claveSobre } from '../utils/ticketFields';
 import { onlyDigits, onlyLetters, onlyAlphanumeric, isValidPhone, isValidName, isValidCedula } from '../utils/validators';
 import { hasRole, hasAnyRole, getRoles } from '../utils/roles';
 import Swal from 'sweetalert2';
@@ -60,6 +61,15 @@ const TicketsPage = () => {
   const [ticketsSeleccionados, setTicketsSeleccionados] = useState(new Set());
   const [printerEnabled, setPrinterEnabled] = useState(false); // ¿Función de impresión activa?
   const [ticketColors, setTicketColors] = useState([]); // [{ tipo, color }] configurado por el jefe
+  // Validación de boleto físico al canjear (ver canjeSettingsService): si
+  // está activa, el canje individual exige escanear el ticket físico antes
+  // de confirmarse. El "modo" (cámara de la compu o celular vinculado) se
+  // elige una vez al empezar a canjear y se mantiene para el resto de la
+  // sesión en esta pestaña.
+  const [requiereEscaneoFisico, setRequiereEscaneoFisico] = useState(false);
+  const [modoValidacionQr, setModoValidacionQr] = useState(null); // 'computadora' | 'celular' | null
+  const [mostrarValidacionQr, setMostrarValidacionQr] = useState(false);
+  const resolverValidacionQrRef = useRef(null);
   const [printForm, setPrintForm] = useState({
     quienRetira: '',
     parentesco: '',
@@ -128,6 +138,20 @@ const TicketsPage = () => {
     };
     socketService.on('printer-settings-updated', onSettingsUpdated);
     return () => socketService.off('printer-settings-updated', onSettingsUpdated);
+  }, []);
+
+  // Cargar (y mantener en tiempo real) si el canje individual exige validar
+  // el boleto físico con un escaneo
+  useEffect(() => {
+    canjeSettingsService.getSettings()
+      .then(res => {
+        if (res.success) setRequiereEscaneoFisico(res.data.requiereEscaneoFisico);
+      })
+      .catch(err => console.error('Error al obtener configuración de canje:', err));
+
+    const onCanjeSettingsUpdated = (data) => setRequiereEscaneoFisico(data.requiereEscaneoFisico);
+    socketService.on('canje-settings-updated', onCanjeSettingsUpdated);
+    return () => socketService.off('canje-settings-updated', onCanjeSettingsUpdated);
   }, []);
 
   // Color configurado por el jefe para un tipo de ticket (campo "Ticket")
@@ -757,14 +781,15 @@ const TicketsPage = () => {
   };
 
   // Busca el/los posible(s) sobre(s) donde está el boleto impreso de un
-  // ticket, por nombre (no siempre hay resultado: el archivo de sobres es
-  // opcional y no cubre a todo el mundo)
+  // ticket, por nombre + localidad (no siempre hay resultado: el archivo de
+  // sobres es opcional y no cubre a todo el mundo). La localidad importa
+  // porque un mismo nombre puede existir en más de una con sobres distintos.
   const fetchSobreParaTicket = async (ticket) => {
     setSobreInfo(null);
     const nombreCompleto = getNombreCompleto(ticket);
-    if (!nombreCompleto) return;
+    if (!nombreCompleto || !ticket?.['Ticket']) return;
     try {
-      const response = await sobresService.buscar([nombreCompleto]);
+      const response = await sobresService.buscar([{ nombre: nombreCompleto, localidad: ticket['Ticket'] }]);
       if (response.success) {
         const resultados = Object.values(response.data);
         setSobreInfo(resultados[0] || null);
@@ -777,17 +802,74 @@ const TicketsPage = () => {
   // Igual, pero para varios tickets a la vez (vista previa del canje masivo)
   const fetchSobresBulk = async (ticketsList) => {
     setSobresBulk({});
-    const nombres = ticketsList.map(t => getNombreCompleto(t)).filter(Boolean);
-    if (nombres.length === 0) return;
+    const items = ticketsList
+      .map(t => ({ nombre: getNombreCompleto(t), localidad: t['Ticket'] }))
+      .filter(item => item.nombre && item.localidad);
+    if (items.length === 0) return;
     try {
-      const response = await sobresService.buscar(nombres);
+      const response = await sobresService.buscar(items);
       if (response.success) setSobresBulk(response.data);
     } catch (error) {
       console.error('Error al buscar sobres:', error);
     }
   };
 
-  const handlePrint = (ticket) => {
+  // Si la validación de boleto físico está activa y todavía no se eligió
+  // desde dónde se va a escanear (cámara de esta compu o celular
+  // vinculado), se pregunta una sola vez, antes de abrir el primer canje.
+  // Devuelve false si el usuario cancela (no se abre el canje en ese caso).
+  const asegurarModoValidacion = async () => {
+    if (!requiereEscaneoFisico || modoValidacionQr) return true;
+
+    const { value } = await Swal.fire({
+      title: 'Validación de boleto físico',
+      text: 'Este evento exige escanear el boleto físico que se entrega al canjear. ¿Desde dónde vas a escanear?',
+      icon: 'question',
+      input: 'radio',
+      inputOptions: {
+        computadora: 'Cámara de esta computadora',
+        celular: escaneoActivo ? 'Celular ya vinculado' : 'Celular (hay que vincularlo primero en "Escanear Ticket")'
+      },
+      inputValidator: (v) => (!v ? 'Elegí una opción' : undefined),
+      showCancelButton: true,
+      confirmButtonText: 'Continuar',
+      cancelButtonText: 'Cancelar'
+    });
+
+    if (!value) return false;
+
+    if (value === 'celular' && !escaneoActivo) {
+      Swal.fire({
+        title: 'Falta vincular el celular',
+        text: 'Primero vinculá el celular desde "Escanear Ticket" y volvé a intentar el canje.',
+        icon: 'warning'
+      });
+      return false;
+    }
+
+    setModoValidacionQr(value);
+    return true;
+  };
+
+  // Abre el paso de escaneo y devuelve una promesa que se resuelve con el
+  // código escaneado (ya validado contra el ticket) o null si se cancela.
+  const pedirEscaneoFisico = () => {
+    return new Promise((resolve) => {
+      resolverValidacionQrRef.current = resolve;
+      setMostrarValidacionQr(true);
+    });
+  };
+
+  const resolverValidacionQr = (resultado) => {
+    setMostrarValidacionQr(false);
+    if (resolverValidacionQrRef.current) {
+      resolverValidacionQrRef.current(resultado);
+      resolverValidacionQrRef.current = null;
+    }
+  };
+
+  const handlePrint = async (ticket) => {
+    if (!(await asegurarModoValidacion())) return;
     // Abrir modal para realizar canje
     setSelectedTicket(ticket);
     setShowPrintModal(true);
@@ -796,6 +878,7 @@ const TicketsPage = () => {
   };
 
   const handleSendToPrint = async (ticket) => {
+    if (!(await asegurarModoValidacion())) return;
     // Función mantenida para compatibilidad - ahora abre modal de canje
     setSelectedTicket(ticket);
     setShowPrintModal(true);
@@ -893,11 +976,23 @@ const TicketsPage = () => {
 
     try {
       if (roles.includes('staff') || roles.includes('jefe') || roles.includes('impresor_solo')) {
+        // Si está activa la validación de boleto físico, hay que escanear
+        // el ticket que se está entregando (compara contra ESTE ticket)
+        // antes de poder confirmar el canje. Si se cancela, no se manda
+        // nada y el formulario queda como estaba.
+        let codigoFisicoEscaneado;
+        if (requiereEscaneoFisico) {
+          const resultado = await pedirEscaneoFisico();
+          if (!resultado) return;
+          codigoFisicoEscaneado = resultado;
+        }
+
         // Preparar datos del canje
         const canjeData = {
           quienRetira: printForm.quienRetira,
           celular: printForm.celular,
-          cedulaQuienRetira: printForm.cedulaQuienRetira
+          cedulaQuienRetira: printForm.cedulaQuienRetira,
+          ...(codigoFisicoEscaneado && { codigoFisicoEscaneado })
         };
 
         // Solo agregar campos adicionales si es "Otro"
@@ -2476,7 +2571,7 @@ const TicketsPage = () => {
                                       <br />
                                       Last Four: {getLast4(ticket)}
                                       {(() => {
-                                        const info = sobresBulk[normalizarNombreParaSobre(getNombreCompleto(ticket))];
+                                        const info = sobresBulk[claveSobre(ticket['Ticket'], getNombreCompleto(ticket))];
                                         return info && info.sobres.length > 0 ? (
                                           <><br />Posible sobre: <strong>{info.sobres.join(' / ')}</strong></>
                                         ) : null;
@@ -2758,6 +2853,14 @@ const TicketsPage = () => {
           )}
         </div>
       </div>
+
+      <ValidacionEscaneoModal
+        show={mostrarValidacionQr}
+        modo={modoValidacionQr}
+        codigoEsperado={selectedTicket?.['Barcode Data']}
+        onConfirmado={(codigo) => resolverValidacionQr(codigo)}
+        onCancelado={() => resolverValidacionQr(null)}
+      />
     </div>
   );
 };

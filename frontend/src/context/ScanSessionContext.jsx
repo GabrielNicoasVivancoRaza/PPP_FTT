@@ -3,15 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import api from '../services/api';
 import socketService from '../services/socket';
-import { contadorEntradasService } from '../services';
 import Swal from 'sweetalert2';
 import { hasRole } from '../utils/roles';
-
-// Mismo QR "quemado" que reconoce ScanTicketPage: un único código fijo que
-// no corresponde a ningún ticket real. Cuando el celular (sin sesión
-// iniciada) lo reenvía por este canal, es la computadora (sí logueada) la
-// que suma al contador — nunca se busca como ticket.
-const CODIGO_FIJO = 'HJKLASHSGDHASJSHYDJDHagshHHgfaj5611638430000/200A';
 
 /**
  * Sesión de escaneo con el celular.
@@ -38,6 +31,11 @@ export const ScanSessionProvider = ({ children }) => {
   const navigate = useNavigate();
   const [sessionCode, setSessionCode] = useState(() => localStorage.getItem(STORAGE_KEY) || null);
   const procesandoRef = useRef(false);
+  // Validación de boleto físico al canjear (ver TicketsPage): cuando hay una
+  // espera armada, el próximo código que mande el celular se le entrega a
+  // ESA espera en vez de procesarse como un escaneo normal (no se busca
+  // como ticket ni se navega a ningún lado).
+  const esperaValidacionRef = useRef(null); // { resolve } | null
 
   const esJefe = hasRole(user, 'jefe');
   const esImpresorCola = hasRole(user, 'impresor_cola');
@@ -102,32 +100,21 @@ export const ScanSessionProvider = ({ children }) => {
     socketService.joinScanSession(sessionCode);
 
     const onScanDetected = async (data) => {
-      // Evita procesar dos códigos a la vez si llegan muy seguidos
-      if (!data?.code || procesandoRef.current) return;
-      procesandoRef.current = true;
+      if (!data?.code) return;
 
-      // QR fijo reenviado desde el celular: no es un ticket, solo suma al
-      // contador (la computadora sí está logueada, a diferencia del celular)
-      if (data.code === CODIGO_FIJO) {
-        try {
-          const response = await contadorEntradasService.incrementar();
-          if (response.success) {
-            Swal.fire({
-              toast: true,
-              position: 'top-end',
-              icon: 'success',
-              title: `Entrada contada (${response.data.contador})`,
-              timer: 1200,
-              showConfirmButton: false
-            });
-          }
-        } catch (error) {
-          console.error('Error al sumar al contador de entradas:', error);
-        } finally {
-          procesandoRef.current = false;
-        }
+      // Si hay una validación de boleto físico esperando (canje con
+      // escaneo obligatorio), este código es para ESA espera, no para la
+      // búsqueda normal de ticket
+      if (esperaValidacionRef.current) {
+        const { resolve } = esperaValidacionRef.current;
+        esperaValidacionRef.current = null;
+        resolve(data.code);
         return;
       }
+
+      // Evita procesar dos códigos a la vez si llegan muy seguidos
+      if (procesandoRef.current) return;
+      procesandoRef.current = true;
 
       try {
         const response = await api.get(`/tickets/barcode/${encodeURIComponent(data.code)}`);
@@ -165,12 +152,33 @@ export const ScanSessionProvider = ({ children }) => {
     return () => socketService.off('scan-detected', onScanDetected);
   }, [sessionCode, isAuthenticated, token, esImpresorCola, navigate]);
 
+  // Devuelve una promesa que se resuelve con el próximo código que mande el
+  // celular vinculado (null si se cancela con cancelarEsperaEscaneo antes
+  // de que llegue algo). Se usa para la validación de boleto físico al
+  // canjear, cuando el modo elegido es "celular" en vez de la cámara de
+  // esta computadora.
+  const esperarProximoEscaneo = useCallback(() => {
+    return new Promise((resolve) => {
+      esperaValidacionRef.current = { resolve };
+    });
+  }, []);
+
+  const cancelarEsperaEscaneo = useCallback(() => {
+    if (esperaValidacionRef.current) {
+      const { resolve } = esperaValidacionRef.current;
+      esperaValidacionRef.current = null;
+      resolve(null);
+    }
+  }, []);
+
   const valor = {
     sessionCode,
     activa: !!sessionCode,
     iniciarSesion,
     terminarSesion,
-    regenerarSesion
+    regenerarSesion,
+    esperarProximoEscaneo,
+    cancelarEsperaEscaneo
   };
 
   return (

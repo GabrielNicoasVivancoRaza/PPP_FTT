@@ -2,15 +2,24 @@ const Sobre = require('../models/Sobre');
 const { parseCsvBuffer } = require('../utils/csvImportHelpers');
 const { normalizarNombre } = require('../utils/nombreHelpers');
 
-// @desc    Importar el CSV de ubicación de sobres (proceso externo que
-// ordena los boletos físicos impresos por nombre). Reemplaza TODO lo que
-// había antes: no se mezcla con una subida vieja, porque el reordenamiento
-// de sobres puede cambiar de una tanda a otra.
+// @desc    Importar el CSV de ubicación de sobres de UNA localidad (proceso
+// externo que ordena los boletos físicos impresos por nombre). Reemplaza lo
+// que había antes SOLO de esa localidad — las demás no se tocan, porque el
+// reordenamiento de sobres puede cambiar de una tanda a otra y cada
+// localidad (AREA, VIP, etc.) se arma por separado.
 // Columnas esperadas: sobre, numero_boleto, posicion_original, nombre
 // @route   POST /api/sobres/import
 // @access  Private (jefe, importador)
 const importarSobres = async (req, res) => {
   try {
+    const localidad = (req.body.localidad || '').trim();
+    if (!localidad) {
+      return res.status(400).json({
+        success: false,
+        message: 'Debe indicar a qué localidad corresponde este archivo de sobres'
+      });
+    }
+
     if (!req.file) {
       return res.status(400).json({
         success: false,
@@ -46,6 +55,7 @@ const importarSobres = async (req, res) => {
         continue;
       }
       docs.push({
+        localidad,
         nombre,
         nombreNormalizado: normalizarNombre(nombre),
         sobre,
@@ -62,16 +72,17 @@ const importarSobres = async (req, res) => {
       });
     }
 
-    // Reemplazo completo: se borra todo lo anterior y se inserta la tanda nueva
-    await Sobre.deleteMany({});
+    // Reemplazo solo de esa localidad: las demás quedan intactas
+    await Sobre.deleteMany({ localidad });
     await Sobre.insertMany(docs, { ordered: false });
 
     const nombresDistintos = new Set(docs.map(d => d.nombreNormalizado)).size;
 
     res.json({
       success: true,
-      message: `${docs.length} fila(s) importada(s) (${nombresDistintos} persona(s) distintas). Se reemplazó la información de sobres anterior.`,
+      message: `${docs.length} fila(s) importada(s) para "${localidad}" (${nombresDistintos} persona(s) distintas). Se reemplazó la información de sobres anterior de esa localidad.`,
       data: {
+        localidad,
         totalFilas: docs.length,
         nombresDistintos,
         omitidas
@@ -87,42 +98,64 @@ const importarSobres = async (req, res) => {
   }
 };
 
+// Misma clave que usa el frontend para no pisar resultados cuando el mismo
+// nombre (o el mismo bucket de nombres, tipo "Al") existe en más de una
+// localidad con sobres distintos (ver utils/ticketFields.js en el frontend)
+const claveSobre = (localidad, nombreNormalizado) => `${localidad}||${nombreNormalizado}`;
+
 // @desc    Buscar el/los posible(s) sobre(s) de una o varias personas por
-// nombre. Se usa al momento de canjear, para saber dónde buscar el boleto
-// físico impreso. No todos los tickets van a tener resultado (no es
-// obligatorio subir este archivo, y no todos los nombres matchean).
+// nombre + localidad del ticket. Se usa al momento de canjear, para saber
+// dónde buscar el boleto físico impreso. No todos los tickets van a tener
+// resultado (no es obligatorio subir este archivo, y no todos los nombres
+// matchean).
 // @route   POST /api/sobres/buscar
-// body: { nombres: string[] }
+// body: { items: [{ nombre: string, localidad: string }] }
 // @access  Private (jefe, staff, impresor_solo, impresor_cola)
 const buscarSobres = async (req, res) => {
   try {
-    const { nombres } = req.body;
+    const { items } = req.body;
 
-    if (!Array.isArray(nombres) || nombres.length === 0) {
+    if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'Debe proporcionar un array de nombres'
+        message: 'Debe proporcionar un array de items {nombre, localidad}'
       });
     }
 
-    const normalizados = [...new Set(nombres.map(n => normalizarNombre(n)).filter(Boolean))];
-    if (normalizados.length === 0) {
+    // $or de pares exactos (nombreNormalizado + localidad): no se puede
+    // buscar por nombre solo, porque el mismo bucket puede existir en más
+    // de una localidad con sobres distintos
+    const pares = [];
+    const vistos = new Set();
+    for (const item of items) {
+      const nombreNormalizado = normalizarNombre(item?.nombre);
+      const localidad = (item?.localidad || '').trim();
+      if (!nombreNormalizado || !localidad) continue;
+      const clave = claveSobre(localidad, nombreNormalizado);
+      if (vistos.has(clave)) continue;
+      vistos.add(clave);
+      pares.push({ nombreNormalizado, localidad });
+    }
+
+    if (pares.length === 0) {
       return res.json({ success: true, data: {} });
     }
 
-    const registros = await Sobre.find({ nombreNormalizado: { $in: normalizados } }).lean();
+    const registros = await Sobre.find({ $or: pares }).lean();
 
-    // Se agrupa por nombre normalizado: mismo nombre => mismo sobre (ya se
-    // verificó que el archivo no trae conflictos), así que alcanza con un
-    // valor por nombre. Si algún día llegara a haber más de uno, se listan
-    // todos para no ocultar la ambigüedad.
+    // Se agrupa por localidad + nombre normalizado: mismo nombre en la
+    // misma localidad => mismo sobre (ya se verificó que el archivo no trae
+    // conflictos), así que alcanza con un valor por clave. Si algún día
+    // llegara a haber más de uno, se listan todos para no ocultar la
+    // ambigüedad.
     const resultado = {};
     registros.forEach(r => {
-      if (!resultado[r.nombreNormalizado]) {
-        resultado[r.nombreNormalizado] = { nombre: r.nombre, sobres: [] };
+      const clave = claveSobre(r.localidad, r.nombreNormalizado);
+      if (!resultado[clave]) {
+        resultado[clave] = { nombre: r.nombre, localidad: r.localidad, sobres: [] };
       }
-      if (!resultado[r.nombreNormalizado].sobres.includes(r.sobre)) {
-        resultado[r.nombreNormalizado].sobres.push(r.sobre);
+      if (!resultado[clave].sobres.includes(r.sobre)) {
+        resultado[clave].sobres.push(r.sobre);
       }
     });
 
@@ -137,27 +170,37 @@ const buscarSobres = async (req, res) => {
   }
 };
 
-// @desc    Resumen de la información de sobres cargada actualmente
-// (cantidad de filas, cuándo se subió por última vez)
+// @desc    Resumen de la información de sobres cargada actualmente, por
+// localidad (puede haber varias cargadas a la vez, p. ej. AREA y VIP)
 // @route   GET /api/sobres/resumen
 // @access  Private (jefe, importador)
 const getResumenSobres = async (req, res) => {
   try {
-    const [total, ultimo] = await Promise.all([
-      Sobre.countDocuments(),
-      Sobre.findOne().sort({ createdAt: -1 }).populate('subidoPor', 'nombre')
-    ]);
+    const localidades = await Sobre.distinct('localidad');
 
-    const nombresDistintos = total > 0 ? (await Sobre.distinct('nombreNormalizado')).length : 0;
+    const porLocalidad = await Promise.all(localidades.map(async (localidad) => {
+      const [totalFilas, nombresDistintos, ultimo] = await Promise.all([
+        Sobre.countDocuments({ localidad }),
+        Sobre.distinct('nombreNormalizado', { localidad }),
+        Sobre.findOne({ localidad }).sort({ createdAt: -1 }).populate('subidoPor', 'nombre')
+      ]);
+      return {
+        localidad,
+        totalFilas,
+        nombresDistintos: nombresDistintos.length,
+        ultimaImportacion: ultimo
+          ? { fecha: ultimo.createdAt, usuario: ultimo.subidoPor?.nombre || null }
+          : null
+      };
+    }));
+
+    porLocalidad.sort((a, b) => a.localidad.localeCompare(b.localidad));
 
     res.json({
       success: true,
       data: {
-        totalFilas: total,
-        nombresDistintos,
-        ultimaImportacion: ultimo
-          ? { fecha: ultimo.createdAt, usuario: ultimo.subidoPor?.nombre || null }
-          : null
+        porLocalidad,
+        totalFilas: porLocalidad.reduce((sum, l) => sum + l.totalFilas, 0)
       }
     });
   } catch (error) {

@@ -18,7 +18,7 @@ const puntoVentaRoutes = require('./routes/puntoVentaRoutes');
 const printerSettingsRoutes = require('./routes/printerSettings');
 const printRequestRoutes = require('./routes/printRequests');
 const sobresRoutes = require('./routes/sobres');
-const contadorEntradasRoutes = require('./routes/contadorEntradas');
+const canjeSettingsRoutes = require('./routes/canjeSettings');
 
 const app = express();
 const server = http.createServer(app);
@@ -131,7 +131,7 @@ app.use('/api/puntos-venta', puntoVentaRoutes);
 app.use('/api/printer-settings', printerSettingsRoutes);
 app.use('/api/print-requests', printRequestRoutes);
 app.use('/api/sobres', sobresRoutes);
-app.use('/api/contador-entradas', contadorEntradasRoutes);
+app.use('/api/canje-settings', canjeSettingsRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {

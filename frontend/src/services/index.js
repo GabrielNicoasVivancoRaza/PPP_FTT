@@ -193,12 +193,15 @@ export const ticketService = {
 
 // Ubicación de sobres (proceso externo que ordena los boletos físicos
 // impresos por nombre). El join con los tickets es por nombre, no hay ID
-// en común.
+// en común. Un evento puede tener varias localidades (AREA, VIP, etc.),
+// cada una con su propia tanda de sobres — por eso todo va con localidad.
 export const sobresService = {
-  // Reemplaza TODA la información de sobres anterior por la del archivo nuevo
-  importar: async (file) => {
+  // Reemplaza la información de sobres anterior DE ESA LOCALIDAD por la
+  // del archivo nuevo (las demás localidades no se tocan)
+  importar: async (file, localidad) => {
     const formData = new FormData();
     formData.append('csv', file);
+    formData.append('localidad', localidad);
     const response = await api.post('/sobres/import', formData, {
       headers: { 'Content-Type': undefined },
       timeout: 5 * 60 * 1000
@@ -206,10 +209,10 @@ export const sobresService = {
     return response.data;
   },
 
-  // nombres: array de nombres completos ("First Last") a buscar. Devuelve
-  // { [nombreNormalizado]: { nombre, sobres: [...] } }
-  buscar: async (nombres) => {
-    const response = await api.post('/sobres/buscar', { nombres });
+  // items: [{ nombre: "First Last", localidad }]. Devuelve
+  // { [localidad||nombreNormalizado]: { nombre, localidad, sobres: [...] } }
+  buscar: async (items) => {
+    const response = await api.post('/sobres/buscar', { items });
     return response.data;
   },
 
@@ -245,21 +248,17 @@ export const printerSettingsService = {
   }
 };
 
-export const contadorEntradasService = {
-  // Contador de entradas leídas con el QR fijo (vive en su propia colección,
-  // separado de los tickets)
-  getContador: async () => {
-    const response = await api.get('/contador-entradas');
+// Validación del canje individual exigiendo escanear el boleto físico que
+// se está entregando (tiene que coincidir con el ticket que se canjea)
+export const canjeSettingsService = {
+  getSettings: async () => {
+    const response = await api.get('/canje-settings');
     return response.data;
   },
 
-  incrementar: async () => {
-    const response = await api.post('/contador-entradas/incrementar');
-    return response.data;
-  },
-
-  setContador: async (contador) => {
-    const response = await api.put('/contador-entradas', { contador });
+  // jefe
+  updateRequiereEscaneoFisico: async (requiereEscaneoFisico) => {
+    const response = await api.put('/canje-settings', { requiereEscaneoFisico });
     return response.data;
   }
 };

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { printerSettingsService } from '../services';
+import { printerSettingsService, canjeSettingsService } from '../services';
 import Swal from 'sweetalert2';
 import { hasRole } from '../utils/roles';
 import 'bootstrap/dist/css/bootstrap.min.css';
@@ -29,6 +29,8 @@ const PrinterSettingsPage = () => {
   const [enabled, setEnabled] = useState(false);
   const [tipos, setTipos] = useState([]);
   const [colores, setColores] = useState({}); // { tipo: colorHex }
+  const [requiereEscaneoFisico, setRequiereEscaneoFisico] = useState(false);
+  const [savingEscaneo, setSavingEscaneo] = useState(false);
 
   useEffect(() => {
     if (hasRole(user, 'jefe')) {
@@ -39,9 +41,10 @@ const PrinterSettingsPage = () => {
   const cargarDatos = async () => {
     try {
       setLoading(true);
-      const [settingsRes, tiposRes] = await Promise.all([
+      const [settingsRes, tiposRes, canjeSettingsRes] = await Promise.all([
         printerSettingsService.getSettings(),
-        printerSettingsService.getTicketTypes()
+        printerSettingsService.getTicketTypes(),
+        canjeSettingsService.getSettings()
       ]);
 
       if (settingsRes.success) {
@@ -55,6 +58,10 @@ const PrinterSettingsPage = () => {
 
       if (tiposRes.success) {
         setTipos(tiposRes.data.tipos || []);
+      }
+
+      if (canjeSettingsRes.success) {
+        setRequiereEscaneoFisico(canjeSettingsRes.data.requiereEscaneoFisico);
       }
     } catch (error) {
       console.error('Error al cargar configuración de impresión:', error);
@@ -83,6 +90,28 @@ const PrinterSettingsPage = () => {
       Swal.fire('Error', error.response?.data?.message || 'No se pudo actualizar', 'error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleToggleRequiereEscaneoFisico = async () => {
+    const nuevoValor = !requiereEscaneoFisico;
+    try {
+      setSavingEscaneo(true);
+      const response = await canjeSettingsService.updateRequiereEscaneoFisico(nuevoValor);
+      if (response.success) {
+        setRequiereEscaneoFisico(nuevoValor);
+        Swal.fire({
+          title: nuevoValor ? 'Validación por escaneo activada' : 'Validación por escaneo desactivada',
+          icon: 'success',
+          timer: 1500,
+          showConfirmButton: false
+        });
+      }
+    } catch (error) {
+      console.error('Error al actualizar validación de canje:', error);
+      Swal.fire('Error', error.response?.data?.message || 'No se pudo actualizar', 'error');
+    } finally {
+      setSavingEscaneo(false);
     }
   };
 
@@ -156,6 +185,31 @@ const PrinterSettingsPage = () => {
                   checked={enabled}
                   disabled={saving}
                   onChange={handleToggleEnabled}
+                  style={{ width: '3rem', height: '1.6rem', cursor: 'pointer' }}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="card mb-4">
+            <div className="card-body d-flex justify-content-between align-items-center">
+              <div>
+                <h5 className="mb-1">Validar el boleto físico al canjear</h5>
+                <p className="text-muted mb-0">
+                  Al habilitar esta opción, el canje individual exige escanear el código del boleto
+                  físico que se está entregando (por la cámara de la computadora o el celular
+                  vinculado) antes de confirmarse, y tiene que coincidir con el ticket que se está
+                  canjeando — evita entregar el boleto equivocado. No aplica al canje masivo.
+                </p>
+              </div>
+              <div className="form-check form-switch fs-4 ms-3">
+                <input
+                  className="form-check-input"
+                  type="checkbox"
+                  role="switch"
+                  checked={requiereEscaneoFisico}
+                  disabled={savingEscaneo}
+                  onChange={handleToggleRequiereEscaneoFisico}
                   style={{ width: '3rem', height: '1.6rem', cursor: 'pointer' }}
                 />
               </div>

@@ -1,6 +1,7 @@
 const Ticket = require('../models/Ticket');
 const AuditLog = require('../models/AuditLog');
 const PrinterSettings = require('../models/PrinterSettings');
+const CanjeSettings = require('../models/CanjeSettings');
 const { createOrExtendPrintRequest } = require('./printRequestController');
 const { getUnprintedTransactionTicketIds, markTransactionPrinted, emitTicketUpdates, resolveColor } = require('../utils/printHelpers');
 const { propagateCanjeToTransaction } = require('../utils/canjeHelpers');
@@ -824,7 +825,7 @@ const exportTicketsCsv = async (req, res) => {
 // @access  Private
 const canjeTicket = async (req, res) => {
   try {
-    const { quienRetira, parentesco, parentescoDescripcion, quienOtro, celular, cedulaQuienRetira, ticketsSeleccionados } = req.body;
+    const { quienRetira, parentesco, parentescoDescripcion, quienOtro, celular, cedulaQuienRetira, ticketsSeleccionados, codigoFisicoEscaneado } = req.body;
     const ticketId = req.params.id;
 
     // Validaciones básicas
@@ -916,6 +917,26 @@ const canjeTicket = async (req, res) => {
         success: false,
         message: 'Este ticket fue eliminado del evento (anulado o reembolsado) y no se puede canjear'
       });
+    }
+
+    // Si está activa la validación por escaneo físico (jefe la prende/apaga
+    // en Configuración), el boleto físico que se está entregando tiene que
+    // coincidir con ESTE ticket — evita entregar el boleto de otra persona
+    // por error. Solo aplica al canje individual, no al masivo.
+    const canjeSettings = await CanjeSettings.getSettings();
+    if (canjeSettings.requiereEscaneoFisico) {
+      if (!codigoFisicoEscaneado || !codigoFisicoEscaneado.trim()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Debe escanear el código del boleto físico antes de confirmar el canje'
+        });
+      }
+      if (codigoFisicoEscaneado.trim() !== ticket['Barcode Data']) {
+        return res.status(409).json({
+          success: false,
+          message: 'El código escaneado no corresponde a este boleto. Revise que esté entregando el ticket correcto.'
+        });
+      }
     }
 
     // Actualizar ticket con información de canje
@@ -1057,6 +1078,10 @@ const canjeTicket = async (req, res) => {
 
       if (otrosCanjeadosSinActual.length > 0) {
         auditDetails.ticketsCanjeadosTransaccion = otrosCanjeados.length;
+      }
+
+      if (canjeSettings.requiereEscaneoFisico) {
+        auditDetails.validadoPorEscaneoFisico = true;
       }
 
       await AuditLog.create({

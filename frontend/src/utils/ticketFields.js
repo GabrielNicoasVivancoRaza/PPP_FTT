@@ -52,3 +52,13 @@ export const normalizarNombreParaSobre = (texto) =>
     .toUpperCase()
     .trim()
     .replace(/\s+/g, ' ');
+
+/**
+ * Misma clave compuesta que arma el backend (claveSobre en
+ * sobresController.js): localidad + nombre normalizado. Hace falta porque
+ * un mismo nombre (o el mismo bucket de nombres, tipo "Al") puede existir
+ * en más de una localidad (AREA, VIP, etc.) con sobres distintos — no basta
+ * con el nombre solo para leer la respuesta de sobresService.buscar().
+ */
+export const claveSobre = (localidad, nombreCompleto) =>
+  `${localidad || ''}||${normalizarNombreParaSobre(nombreCompleto)}`;

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { ticketService, sobresService } from '../services';
+import api from '../services/api';
 import Swal from 'sweetalert2';
 import { hasAnyRole } from '../utils/roles';
 import 'bootstrap/dist/css/bootstrap.min.css';
@@ -15,8 +16,13 @@ const ImportCsvPage = () => {
   const [ultimoResultado, setUltimoResultado] = useState(null);
   const inputRef = useRef(null);
 
-  // Importar sobres (ubicación física de los boletos impresos, por nombre)
+  // Importar sobres (ubicación física de los boletos impresos, por nombre).
+  // Un evento puede tener varias localidades (AREA, VIP, etc.), cada una
+  // con su propia tanda de sobres — hay que indicar a cuál corresponde
+  // cada archivo que se sube.
   const [archivoSobres, setArchivoSobres] = useState(null);
+  const [localidadSobres, setLocalidadSobres] = useState('');
+  const [localidadesDisponibles, setLocalidadesDisponibles] = useState([]);
   const [subiendoSobres, setSubiendoSobres] = useState(false);
   const [resumenSobres, setResumenSobres] = useState(null);
   const [cargandoResumenSobres, setCargandoResumenSobres] = useState(true);
@@ -39,6 +45,20 @@ const ImportCsvPage = () => {
   useEffect(() => {
     cargarResumenSobres();
   }, [cargarResumenSobres]);
+
+  useEffect(() => {
+    const cargarLocalidades = async () => {
+      try {
+        const response = await api.get('/puntos-venta/localidades/disponibles');
+        if (response.data.success) {
+          setLocalidadesDisponibles(response.data.data.localidades || []);
+        }
+      } catch (error) {
+        console.error('Error al cargar localidades:', error);
+      }
+    };
+    cargarLocalidades();
+  }, []);
 
   if (!hasAnyRole(user, ROLES_PERMITIDOS)) {
     return (
@@ -146,10 +166,14 @@ const ImportCsvPage = () => {
       Swal.fire('Falta el archivo', 'Seleccione el CSV de sobres antes de subir', 'warning');
       return;
     }
+    if (!localidadSobres) {
+      Swal.fire('Falta la localidad', 'Indique a qué localidad corresponde este archivo (AREA, VIP, etc.)', 'warning');
+      return;
+    }
 
     const result = await Swal.fire({
-      title: '¿Reemplazar información de sobres?',
-      text: 'Esto borra toda la información de sobres cargada anteriormente y la reemplaza por la de este archivo.',
+      title: `¿Reemplazar los sobres de "${localidadSobres}"?`,
+      text: `Esto borra la información de sobres cargada anteriormente para "${localidadSobres}" y la reemplaza por la de este archivo. Las demás localidades no se tocan.`,
       icon: 'warning',
       showCancelButton: true,
       confirmButtonText: 'Sí, reemplazar',
@@ -161,7 +185,7 @@ const ImportCsvPage = () => {
 
     try {
       setSubiendoSobres(true);
-      const response = await sobresService.importar(archivoSobres);
+      const response = await sobresService.importar(archivoSobres, localidadSobres);
       if (response.success) {
         setArchivoSobres(null);
         if (inputSobresRef.current) inputSobresRef.current.value = '';
@@ -324,13 +348,31 @@ const ImportCsvPage = () => {
             <div className="card-body">
               <p className="text-muted small">
                 CSV con las columnas <code>sobre</code>, <code>numero_boleto</code>,{' '}
-                <code>posicion_original</code> y <code>nombre</code>. Cada importación{' '}
-                <strong>reemplaza toda</strong> la información anterior — no se mezcla con
-                una subida vieja, porque el reordenamiento puede cambiar de una tanda a otra.
-                El emparejamiento con los tickets es por nombre, así que no todos los
-                tickets van a tener un sobre asignado.
+                <code>posicion_original</code> y <code>nombre</code>. Si el evento tiene varias
+                localidades (p. ej. AREA y VIP), cada una trae su propia tanda de sobres — subilas
+                por separado indicando a cuál corresponde cada archivo. Cada importación{' '}
+                <strong>reemplaza solo esa localidad</strong>, las demás no se tocan. El
+                emparejamiento con los tickets es por nombre, así que no todos van a tener sobre.
               </p>
               <form onSubmit={handleSubmitSobres}>
+                <div className="mb-3">
+                  <label className="form-label">Localidad</label>
+                  <select
+                    className="form-select"
+                    value={localidadSobres}
+                    onChange={(e) => setLocalidadSobres(e.target.value)}
+                    disabled={subiendoSobres}
+                  >
+                    <option value="">Seleccione la localidad de este archivo...</option>
+                    {localidadesDisponibles.map(loc => (
+                      <option key={loc} value={loc}>{loc}</option>
+                    ))}
+                  </select>
+                  <small className="form-text text-muted">
+                    Tiene que ser exactamente el mismo nombre de localidad que usan los tickets
+                    (columna &quot;Ticket&quot;/&quot;Seat&quot; del CSV), para poder emparejarlos al canjear.
+                  </small>
+                </div>
                 <div className="mb-3">
                   <input
                     ref={inputSobresRef}
@@ -341,7 +383,7 @@ const ImportCsvPage = () => {
                     disabled={subiendoSobres}
                   />
                 </div>
-                <button type="submit" className="btn btn-outline-primary w-100" disabled={subiendoSobres || !archivoSobres}>
+                <button type="submit" className="btn btn-outline-primary w-100" disabled={subiendoSobres || !archivoSobres || !localidadSobres}>
                   {subiendoSobres ? (
                     <>
                       <span className="spinner-border spinner-border-sm me-2" role="status"></span>
@@ -373,22 +415,30 @@ const ImportCsvPage = () => {
                   Todavía no se subió ningún archivo de sobres.
                 </div>
               ) : (
-                <ul className="list-unstyled mb-0">
-                  <li className="mb-2">
+                <>
+                  <p className="mb-3">
                     <span className="badge bg-primary me-2">{resumenSobres.totalFilas}</span>
-                    fila(s) cargadas
-                  </li>
-                  <li className="mb-2">
-                    <span className="badge bg-primary me-2">{resumenSobres.nombresDistintos}</span>
-                    persona(s) distintas
-                  </li>
-                  {resumenSobres.ultimaImportacion && (
-                    <li className="text-muted small">
-                      Última importación: {new Date(resumenSobres.ultimaImportacion.fecha).toLocaleString('es-ES')}
-                      {resumenSobres.ultimaImportacion.usuario && ` — ${resumenSobres.ultimaImportacion.usuario}`}
-                    </li>
-                  )}
-                </ul>
+                    fila(s) cargadas en total, entre {resumenSobres.porLocalidad.length} localidad(es)
+                  </p>
+                  {resumenSobres.porLocalidad.map(loc => (
+                    <div key={loc.localidad} className="border rounded p-2 mb-2">
+                      <strong>{loc.localidad}</strong>
+                      <ul className="list-unstyled mb-0 mt-1">
+                        <li>
+                          <span className="badge bg-primary me-2">{loc.totalFilas}</span>
+                          fila(s) · <span className="badge bg-primary me-2">{loc.nombresDistintos}</span>
+                          persona(s) distintas
+                        </li>
+                        {loc.ultimaImportacion && (
+                          <li className="text-muted small">
+                            Última importación: {new Date(loc.ultimaImportacion.fecha).toLocaleString('es-ES')}
+                            {loc.ultimaImportacion.usuario && ` — ${loc.ultimaImportacion.usuario}`}
+                          </li>
+                        )}
+                      </ul>
+                    </div>
+                  ))}
+                </>
               )}
             </div>
           </div>
