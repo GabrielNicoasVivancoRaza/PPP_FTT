@@ -1,7 +1,7 @@
 services:
   # Backend Service
   - type: web
-    name: romeo-backend-gye
+    name: Garrix-Cuenca-backend
     env: node
     region: oregon
     plan: free
@@ -20,11 +20,11 @@ services:
       - key: DEFAULT_PASSWORD
         value: FTT2025
       - key: CORS_ORIGIN
-        value: https://canje-ftt-romeo-gye.onrender.com
+        value: https://canje-ftt-garrix-cuenca.onrender.com
 
   # Frontend Service  
   - type: web
-    name: canje-ftt-romeo-gye
+    name: canje-ftt-garrix-cuenca
     env: static
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
@@ -42,10 +42,10 @@ services:
     routes:
       - type: rewrite
         source: /api/*
-        destination: https://romeo-backend-gye.onrender.com/api/:splat
+        destination: https://garrix-cuenca-backend.onrender.com/api/:splat
       - type: rewrite
         source: /*
         destination: /index.html
     envVars:
       - key: VITE_API_URL
-        value: https://romeo-backend-gye.onrender.com
+        value: https://garrix-cuenca-backend.onrender.com
