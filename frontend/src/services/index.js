@@ -195,13 +195,16 @@ export const ticketService = {
 // impresos por nombre). El join con los tickets es por nombre, no hay ID
 // en común. Un evento puede tener varias localidades (AREA, VIP, etc.),
 // cada una con su propia tanda de sobres — por eso todo va con localidad.
+// A veces el CSV de tickets nombra distinto a la MISMA zona física (p. ej.
+// "CLUB AREA" y "CLUB AREA/DANCE FLOOR"), así que un mismo archivo se
+// puede subir marcado con varias localidades a la vez.
 export const sobresService = {
-  // Reemplaza la información de sobres anterior DE ESA LOCALIDAD por la
+  // Reemplaza la información de sobres anterior de ESAS localidades por la
   // del archivo nuevo (las demás localidades no se tocan)
-  importar: async (file, localidad) => {
+  importar: async (file, localidades) => {
     const formData = new FormData();
     formData.append('csv', file);
-    formData.append('localidad', localidad);
+    localidades.forEach(loc => formData.append('localidades', loc));
     const response = await api.post('/sobres/import', formData, {
       headers: { 'Content-Type': undefined },
       timeout: 5 * 60 * 1000

@@ -18,10 +18,12 @@ const ImportCsvPage = () => {
 
   // Importar sobres (ubicación física de los boletos impresos, por nombre).
   // Un evento puede tener varias localidades (AREA, VIP, etc.), cada una
-  // con su propia tanda de sobres — hay que indicar a cuál corresponde
-  // cada archivo que se sube.
+  // con su propia tanda de sobres — hay que indicar a cuál(es) corresponde
+  // cada archivo. A veces el CSV de tickets nombra distinto a la misma
+  // zona física (p. ej. "CLUB AREA" y "CLUB AREA/DANCE FLOOR"), por eso se
+  // puede marcar más de una a la vez para el mismo archivo.
   const [archivoSobres, setArchivoSobres] = useState(null);
-  const [localidadSobres, setLocalidadSobres] = useState('');
+  const [localidadesSobresSeleccionadas, setLocalidadesSobresSeleccionadas] = useState([]);
   const [localidadesDisponibles, setLocalidadesDisponibles] = useState([]);
   const [subiendoSobres, setSubiendoSobres] = useState(false);
   const [resumenSobres, setResumenSobres] = useState(null);
@@ -160,20 +162,28 @@ const ImportCsvPage = () => {
     setArchivoSobres(file || null);
   };
 
+  // Marca/desmarca una localidad para el archivo de sobres que se va a subir
+  const toggleLocalidadSobres = (localidad) => {
+    setLocalidadesSobresSeleccionadas(prev =>
+      prev.includes(localidad) ? prev.filter(l => l !== localidad) : [...prev, localidad]
+    );
+  };
+
   const handleSubmitSobres = async (e) => {
     e.preventDefault();
     if (!archivoSobres) {
       Swal.fire('Falta el archivo', 'Seleccione el CSV de sobres antes de subir', 'warning');
       return;
     }
-    if (!localidadSobres) {
-      Swal.fire('Falta la localidad', 'Indique a qué localidad corresponde este archivo (AREA, VIP, etc.)', 'warning');
+    if (localidadesSobresSeleccionadas.length === 0) {
+      Swal.fire('Falta la localidad', 'Marque al menos una localidad a la que corresponde este archivo (AREA, VIP, etc.)', 'warning');
       return;
     }
 
+    const etiqueta = localidadesSobresSeleccionadas.join(' + ');
     const result = await Swal.fire({
-      title: `¿Reemplazar los sobres de "${localidadSobres}"?`,
-      text: `Esto borra la información de sobres cargada anteriormente para "${localidadSobres}" y la reemplaza por la de este archivo. Las demás localidades no se tocan.`,
+      title: `¿Reemplazar los sobres de "${etiqueta}"?`,
+      text: `Esto borra la información de sobres cargada anteriormente para "${etiqueta}" y la reemplaza por la de este archivo. Las demás localidades no se tocan.`,
       icon: 'warning',
       showCancelButton: true,
       confirmButtonText: 'Sí, reemplazar',
@@ -185,9 +195,10 @@ const ImportCsvPage = () => {
 
     try {
       setSubiendoSobres(true);
-      const response = await sobresService.importar(archivoSobres, localidadSobres);
+      const response = await sobresService.importar(archivoSobres, localidadesSobresSeleccionadas);
       if (response.success) {
         setArchivoSobres(null);
+        setLocalidadesSobresSeleccionadas([]);
         if (inputSobresRef.current) inputSobresRef.current.value = '';
         Swal.fire({ title: 'Sobres actualizados', text: response.message, icon: 'success' });
         cargarResumenSobres();
@@ -350,27 +361,40 @@ const ImportCsvPage = () => {
                 CSV con las columnas <code>sobre</code>, <code>numero_boleto</code>,{' '}
                 <code>posicion_original</code> y <code>nombre</code>. Si el evento tiene varias
                 localidades (p. ej. AREA y VIP), cada una trae su propia tanda de sobres — subilas
-                por separado indicando a cuál corresponde cada archivo. Cada importación{' '}
-                <strong>reemplaza solo esa localidad</strong>, las demás no se tocan. El
+                por separado indicando a cuál(es) corresponde cada archivo. Si el CSV de tickets
+                nombra distinto a la misma zona física (p. ej. &quot;CLUB AREA&quot; y &quot;CLUB
+                AREA/DANCE FLOOR&quot;), marcá las dos para el mismo archivo. Cada importación{' '}
+                <strong>reemplaza solo las localidades marcadas</strong>, las demás no se tocan. El
                 emparejamiento con los tickets es por nombre, así que no todos van a tener sobre.
               </p>
               <form onSubmit={handleSubmitSobres}>
                 <div className="mb-3">
-                  <label className="form-label">Localidad</label>
-                  <select
-                    className="form-select"
-                    value={localidadSobres}
-                    onChange={(e) => setLocalidadSobres(e.target.value)}
-                    disabled={subiendoSobres}
-                  >
-                    <option value="">Seleccione la localidad de este archivo...</option>
-                    {localidadesDisponibles.map(loc => (
-                      <option key={loc} value={loc}>{loc}</option>
-                    ))}
-                  </select>
+                  <label className="form-label">Localidad(es)</label>
+                  <div className="border rounded p-2" style={{ maxHeight: 180, overflowY: 'auto' }}>
+                    {localidadesDisponibles.length === 0 ? (
+                      <small className="text-muted">
+                        Todavía no se detectó ninguna localidad (importe primero el CSV de tickets).
+                      </small>
+                    ) : (
+                      localidadesDisponibles.map(loc => (
+                        <div className="form-check" key={loc}>
+                          <input
+                            type="checkbox"
+                            className="form-check-input"
+                            id={`loc-sobre-${loc}`}
+                            checked={localidadesSobresSeleccionadas.includes(loc)}
+                            onChange={() => toggleLocalidadSobres(loc)}
+                            disabled={subiendoSobres}
+                          />
+                          <label className="form-check-label" htmlFor={`loc-sobre-${loc}`}>{loc}</label>
+                        </div>
+                      ))
+                    )}
+                  </div>
                   <small className="form-text text-muted">
                     Tiene que ser exactamente el mismo nombre de localidad que usan los tickets
                     (columna &quot;Ticket&quot;/&quot;Seat&quot; del CSV), para poder emparejarlos al canjear.
+                    Marque más de una si en realidad son el mismo lugar físico con sobres compartidos.
                   </small>
                 </div>
                 <div className="mb-3">
@@ -383,7 +407,7 @@ const ImportCsvPage = () => {
                     disabled={subiendoSobres}
                   />
                 </div>
-                <button type="submit" className="btn btn-outline-primary w-100" disabled={subiendoSobres || !archivoSobres || !localidadSobres}>
+                <button type="submit" className="btn btn-outline-primary w-100" disabled={subiendoSobres || !archivoSobres || localidadesSobresSeleccionadas.length === 0}>
                   {subiendoSobres ? (
                     <>
                       <span className="spinner-border spinner-border-sm me-2" role="status"></span>
@@ -418,21 +442,21 @@ const ImportCsvPage = () => {
                 <>
                   <p className="mb-3">
                     <span className="badge bg-primary me-2">{resumenSobres.totalFilas}</span>
-                    fila(s) cargadas en total, entre {resumenSobres.porLocalidad.length} localidad(es)
+                    fila(s) cargadas en total, entre {resumenSobres.porGrupo.length} archivo(s) subido(s)
                   </p>
-                  {resumenSobres.porLocalidad.map(loc => (
-                    <div key={loc.localidad} className="border rounded p-2 mb-2">
-                      <strong>{loc.localidad}</strong>
+                  {resumenSobres.porGrupo.map(grupo => (
+                    <div key={grupo.localidades.join('+')} className="border rounded p-2 mb-2">
+                      <strong>{grupo.localidades.join(' + ')}</strong>
                       <ul className="list-unstyled mb-0 mt-1">
                         <li>
-                          <span className="badge bg-primary me-2">{loc.totalFilas}</span>
-                          fila(s) · <span className="badge bg-primary me-2">{loc.nombresDistintos}</span>
+                          <span className="badge bg-primary me-2">{grupo.totalFilas}</span>
+                          fila(s) · <span className="badge bg-primary me-2">{grupo.nombresDistintos}</span>
                           persona(s) distintas
                         </li>
-                        {loc.ultimaImportacion && (
+                        {grupo.ultimaImportacion && (
                           <li className="text-muted small">
-                            Última importación: {new Date(loc.ultimaImportacion.fecha).toLocaleString('es-ES')}
-                            {loc.ultimaImportacion.usuario && ` — ${loc.ultimaImportacion.usuario}`}
+                            Última importación: {new Date(grupo.ultimaImportacion.fecha).toLocaleString('es-ES')}
+                            {grupo.ultimaImportacion.usuario && ` — ${grupo.ultimaImportacion.usuario}`}
                           </li>
                         )}
                       </ul>

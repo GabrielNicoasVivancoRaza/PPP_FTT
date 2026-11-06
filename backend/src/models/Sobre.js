@@ -13,17 +13,26 @@ const { getEventCollectionName } = require('../config/collectionName');
 // localidad con sobres distintos, así que la localidad es parte de la
 // clave: nombre + localidad, no solo nombre.
 //
-// Se sube como CSV (ver sobresController.importarSobres), una localidad a
-// la vez. Cada importación reemplaza lo anterior SOLO de esa localidad —
-// no afecta a las demás — porque el reordenamiento de sobres puede cambiar
-// de una tanda a otra.
+// A veces el CSV de tickets usa más de un nombre de localidad para el MISMO
+// lugar físico (p. ej. "CLUB AREA" y "CLUB AREA/DANCE FLOOR" son la misma
+// zona con sobres distintos por nombre de ticket), así que un mismo archivo
+// de sobres se puede subir marcado con VARIAS localidades a la vez.
+//
+// Se sube como CSV (ver sobresController.importarSobres), elige una o más
+// localidades por archivo. Cada importación reemplaza lo anterior SOLO de
+// las localidades elegidas — no afecta a las demás — porque el
+// reordenamiento de sobres puede cambiar de una tanda a otra.
 const sobreSchema = new mongoose.Schema({
-  // Localidad del ticket (campo "Ticket"/"Seat" del CSV de SquadUp, p. ej.
-  // "AREA" o "VIP") a la que corresponde esta tanda de sobres
-  localidad: {
-    type: String,
+  // Localidad(es) del ticket (campo "Ticket"/"Seat" del CSV de SquadUp) a
+  // las que corresponde esta tanda de sobres. Un ticket matchea si SU
+  // localidad está incluida en este array (ver buscarSobres).
+  localidades: {
+    type: [{ type: String, trim: true }],
     required: true,
-    trim: true,
+    validate: {
+      validator: v => Array.isArray(v) && v.length > 0,
+      message: 'Debe tener al menos una localidad'
+    },
     index: true
   },
   nombre: {
@@ -61,7 +70,7 @@ const sobreSchema = new mongoose.Schema({
 });
 
 // Búsqueda de "cuál es el sobre de esta persona en esta localidad"
-sobreSchema.index({ localidad: 1, nombreNormalizado: 1 });
+sobreSchema.index({ localidades: 1, nombreNormalizado: 1 });
 
 // Sobres separados por evento (ver getEventCollectionName)
 module.exports = mongoose.model('Sobre', sobreSchema, getEventCollectionName('Sobres'));
