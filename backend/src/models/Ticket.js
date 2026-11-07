@@ -43,6 +43,17 @@ const ticketSchema = new mongoose.Schema({
     trim: true,
     default: ''
   },
+  // Código que trae impreso el QR/código de barras del boleto físico.
+  // OJO: este campo NO estaba declarado antes, así que Mongoose sí lo
+  // guardaba (vía el driver nativo, igual que los demás campos del CSV)
+  // pero el acceso directo ticket['Barcode Data'] sobre un documento
+  // Mongoose (no un .lean()) devolvía undefined — solo los campos
+  // declarados tienen getter en la instancia. Eso rompía la validación de
+  // escaneo físico al canjear (comparaba siempre contra undefined).
+  'Barcode Data': {
+    type: String,
+    trim: true
+  },
   // Campos de control de impresión
   impreso: {
     type: Boolean,
