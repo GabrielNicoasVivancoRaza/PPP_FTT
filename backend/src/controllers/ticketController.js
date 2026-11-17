@@ -825,7 +825,7 @@ const exportTicketsCsv = async (req, res) => {
 // @access  Private
 const canjeTicket = async (req, res) => {
   try {
-    const { quienRetira, parentesco, parentescoDescripcion, quienOtro, celular, cedulaQuienRetira, ticketsSeleccionados, codigoFisicoEscaneado } = req.body;
+    const { quienRetira, parentesco, parentescoDescripcion, quienOtro, celular, cedulaQuienRetira, ticketsSeleccionados, codigosFisicosEscaneados } = req.body;
     const ticketId = req.params.id;
 
     // Validaciones básicas
@@ -920,21 +920,40 @@ const canjeTicket = async (req, res) => {
     }
 
     // Si está activa la validación por escaneo físico (jefe la prende/apaga
-    // en Configuración), el boleto físico que se está entregando tiene que
-    // coincidir con ESTE ticket — evita entregar el boleto de otra persona
-    // por error. Solo aplica al canje individual, no al masivo.
+    // en Configuración), el boleto físico de CADA ticket que se va a
+    // entregar tiene que coincidir — no solo el que se apretó "Canjear":
+    // si además hay otros tickets marcados para completar con la misma
+    // información (misma transacción), también se entregan físicamente,
+    // así que hay que escanear todos. Solo aplica al canje individual, no
+    // al masivo.
     const canjeSettings = await CanjeSettings.getSettings();
     if (canjeSettings.requiereEscaneoFisico) {
-      if (!codigoFisicoEscaneado || !codigoFisicoEscaneado.trim()) {
+      const otrosIdsParaValidar = Array.isArray(ticketsSeleccionados)
+        ? ticketsSeleccionados.filter(id => id && id !== ticket['Ticket ID'])
+        : [];
+      const ticketsOtros = otrosIdsParaValidar.length > 0
+        ? await TicketModel.find({ 'Ticket ID': { $in: otrosIdsParaValidar } })
+        : [];
+      const codigosEsperados = [ticket, ...ticketsOtros]
+        .map(t => t['Barcode Data'])
+        .filter(Boolean);
+
+      const codigosEscaneados = Array.isArray(codigosFisicosEscaneados)
+        ? [...new Set(codigosFisicosEscaneados.map(c => (c || '').trim()).filter(Boolean))]
+        : [];
+
+      if (codigosEscaneados.length === 0) {
         return res.status(400).json({
           success: false,
-          message: 'Debe escanear el código del boleto físico antes de confirmar el canje'
+          message: `Debe escanear el código de cada boleto físico antes de confirmar el canje (${codigosEsperados.length} en total)`
         });
       }
-      if (codigoFisicoEscaneado.trim() !== ticket['Barcode Data']) {
+
+      const faltantes = codigosEsperados.filter(c => !codigosEscaneados.includes(c));
+      if (faltantes.length > 0) {
         return res.status(409).json({
           success: false,
-          message: 'El código escaneado no corresponde a este boleto. Revise que esté entregando el ticket correcto.'
+          message: `Faltan ${faltantes.length} de ${codigosEsperados.length} boleto(s) físico(s) por escanear, o alguno de los escaneados no corresponde a esta transacción.`
         });
       }
     }

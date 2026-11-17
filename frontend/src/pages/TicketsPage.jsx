@@ -69,6 +69,13 @@ const TicketsPage = () => {
   const [requiereEscaneoFisico, setRequiereEscaneoFisico] = useState(false);
   const [modoValidacionQr, setModoValidacionQr] = useState(null); // 'computadora' | 'celular' | null
   const [mostrarValidacionQr, setMostrarValidacionQr] = useState(false);
+  // Códigos de barras que hace falta escanear en este paso: el del ticket
+  // principal + los de los demás tickets marcados para completar con la
+  // misma información (misma transacción) — si se entregan 4 boletos
+  // físicos, hay que escanear los 4, no solo el que se apretó "Canjear".
+  // Se fija UNA vez al abrir el paso (no se recalcula en cada render) para
+  // que la cámara no se reinicie sola mientras se está escaneando.
+  const [codigosEsperadosValidacion, setCodigosEsperadosValidacion] = useState([]);
   const resolverValidacionQrRef = useRef(null);
   const [printForm, setPrintForm] = useState({
     quienRetira: '',
@@ -852,9 +859,11 @@ const TicketsPage = () => {
   };
 
   // Abre el paso de escaneo y devuelve una promesa que se resuelve con el
-  // código escaneado (ya validado contra el ticket) o null si se cancela.
-  const pedirEscaneoFisico = () => {
+  // array de códigos escaneados (ya validados contra codigosEsperados, uno
+  // por cada ticket que se va a entregar) o null si se cancela.
+  const pedirEscaneoFisico = (codigosEsperados) => {
     return new Promise((resolve) => {
+      setCodigosEsperadosValidacion(codigosEsperados);
       resolverValidacionQrRef.current = resolve;
       setMostrarValidacionQr(true);
     });
@@ -977,14 +986,22 @@ const TicketsPage = () => {
     try {
       if (roles.includes('staff') || roles.includes('jefe') || roles.includes('impresor_solo')) {
         // Si está activa la validación de boleto físico, hay que escanear
-        // el ticket que se está entregando (compara contra ESTE ticket)
-        // antes de poder confirmar el canje. Si se cancela, no se manda
-        // nada y el formulario queda como estaba.
-        let codigoFisicoEscaneado;
+        // CADA boleto que se va a entregar: el principal + los demás
+        // tickets marcados para completar con la misma información (misma
+        // transacción) — si se entregan 4, hay que escanear los 4. Si se
+        // cancela, no se manda nada y el formulario queda como estaba.
+        let codigosFisicosEscaneados;
         if (requiereEscaneoFisico) {
-          const resultado = await pedirEscaneoFisico();
+          const otrosSeleccionados = Array.from(ticketsSeleccionados)
+            .filter(id => id !== selectedTicket['Ticket ID']);
+          const codigosEsperados = [
+            selectedTicket['Barcode Data'],
+            ...otrosSeleccionados.map(id => ticketsTransaccion.find(t => t['Ticket ID'] === id)?.['Barcode Data'])
+          ].filter(Boolean);
+
+          const resultado = await pedirEscaneoFisico(codigosEsperados);
           if (!resultado) return;
-          codigoFisicoEscaneado = resultado;
+          codigosFisicosEscaneados = resultado;
         }
 
         // Preparar datos del canje
@@ -992,7 +1009,7 @@ const TicketsPage = () => {
           quienRetira: printForm.quienRetira,
           celular: printForm.celular,
           cedulaQuienRetira: printForm.cedulaQuienRetira,
-          ...(codigoFisicoEscaneado && { codigoFisicoEscaneado })
+          ...(codigosFisicosEscaneados && { codigosFisicosEscaneados })
         };
 
         // Solo agregar campos adicionales si es "Otro"
@@ -2857,8 +2874,8 @@ const TicketsPage = () => {
       <ValidacionEscaneoModal
         show={mostrarValidacionQr}
         modo={modoValidacionQr}
-        codigoEsperado={selectedTicket?.['Barcode Data']}
-        onConfirmado={(codigo) => resolverValidacionQr(codigo)}
+        codigosEsperados={codigosEsperadosValidacion}
+        onConfirmado={(codigos) => resolverValidacionQr(codigos)}
         onCancelado={() => resolverValidacionQr(null)}
       />
     </div>
