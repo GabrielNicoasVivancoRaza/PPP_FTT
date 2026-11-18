@@ -25,6 +25,10 @@ const normalizarLocalidadesBody = (valor) => {
 const importarSobres = async (req, res) => {
   try {
     const localidades = normalizarLocalidadesBody(req.body.localidades);
+    // Sub-división física opcional (ver comentario en el modelo): solo
+    // sirve para que esta tanda reemplace a la tanda anterior de la MISMA
+    // sección, sin tocar las demás secciones de la misma localidad.
+    const seccion = (req.body.seccion || '').toString().trim();
     if (localidades.length === 0) {
       return res.status(400).json({
         success: false,
@@ -68,6 +72,7 @@ const importarSobres = async (req, res) => {
       }
       docs.push({
         localidades,
+        seccion,
         nombre,
         nombreNormalizado: normalizarNombre(nombre),
         sobre,
@@ -84,20 +89,21 @@ const importarSobres = async (req, res) => {
       });
     }
 
-    // Reemplazo solo de las localidades elegidas: cualquier sobre que ya
-    // tuviera alguna de ellas se borra (venga del mismo combo o de otro
-    // combo viejo), las que no se tocan.
-    await Sobre.deleteMany({ localidades: { $in: localidades } });
+    // Reemplazo solo de la combinación exacta localidades+sección: así las
+    // distintas secciones de una misma localidad (p. ej. FANZONE 1, 2, 3,
+    // 4...) conviven sin pisarse entre sí.
+    await Sobre.deleteMany({ localidades, seccion });
     await Sobre.insertMany(docs, { ordered: false });
 
     const nombresDistintos = new Set(docs.map(d => d.nombreNormalizado)).size;
-    const etiqueta = localidades.join(' + ');
+    const etiqueta = localidades.join(' + ') + (seccion ? ` (${seccion})` : '');
 
     res.json({
       success: true,
-      message: `${docs.length} fila(s) importada(s) para "${etiqueta}" (${nombresDistintos} persona(s) distintas). Se reemplazó la información de sobres anterior de esa(s) localidad(es).`,
+      message: `${docs.length} fila(s) importada(s) para "${etiqueta}" (${nombresDistintos} persona(s) distintas). Se reemplazó la información de sobres anterior de esa combinación de localidad(es)${seccion ? ' y sección' : ''}.`,
       data: {
         localidades,
+        seccion,
         totalFilas: docs.length,
         nombresDistintos,
         omitidas
@@ -166,7 +172,11 @@ const buscarSobres = async (req, res) => {
     // documento) + nombre normalizado: mismo nombre en la misma localidad
     // => mismo sobre (ya se verificó que el archivo no trae conflictos),
     // así que alcanza con un valor por clave. Si algún día llegara a haber
-    // más de uno, se listan todos para no ocultar la ambigüedad.
+    // más de uno, se listan todos para no ocultar la ambigüedad. Una
+    // localidad seccionada (p. ej. FANZONE) busca en TODAS sus secciones a
+    // la vez (el ticket no indica en cuál está la persona), así que puede
+    // devolver más de un sobre; cuando eso pasa se marca de qué sección es
+    // cada uno para no mezclarlos.
     const resultado = {};
     registros.forEach(r => {
       // Un doc puede tener varias localidades (el combo completo); se
@@ -180,8 +190,9 @@ const buscarSobres = async (req, res) => {
         if (!resultado[clave]) {
           resultado[clave] = { nombre: r.nombre, localidad, sobres: [] };
         }
-        if (!resultado[clave].sobres.includes(r.sobre)) {
-          resultado[clave].sobres.push(r.sobre);
+        const etiquetaSobre = r.seccion ? `${r.sobre} (${r.seccion})` : r.sobre;
+        if (!resultado[clave].sobres.includes(etiquetaSobre)) {
+          resultado[clave].sobres.push(etiquetaSobre);
         }
       });
     });
@@ -207,7 +218,7 @@ const getResumenSobres = async (req, res) => {
     const grupos = await Sobre.aggregate([
       {
         $group: {
-          _id: '$localidades',
+          _id: { localidades: '$localidades', seccion: '$seccion' },
           totalFilas: { $sum: 1 },
           nombresDistintos: { $addToSet: '$nombreNormalizado' },
           ultimaFecha: { $max: '$createdAt' },
@@ -223,14 +234,15 @@ const getResumenSobres = async (req, res) => {
         usuario = u?.nombre || null;
       }
       return {
-        localidades: g._id,
+        localidades: g._id.localidades,
+        seccion: g._id.seccion || '',
         totalFilas: g.totalFilas,
         nombresDistintos: g.nombresDistintos.length,
         ultimaImportacion: g.ultimaFecha ? { fecha: g.ultimaFecha, usuario } : null
       };
     }));
 
-    porGrupo.sort((a, b) => a.localidades.join(',').localeCompare(b.localidades.join(',')));
+    porGrupo.sort((a, b) => (a.localidades.join(',') + a.seccion).localeCompare(b.localidades.join(',') + b.seccion));
 
     res.json({
       success: true,

@@ -199,12 +199,16 @@ export const ticketService = {
 // "CLUB AREA" y "CLUB AREA/DANCE FLOOR"), así que un mismo archivo se
 // puede subir marcado con varias localidades a la vez.
 export const sobresService = {
-  // Reemplaza la información de sobres anterior de ESAS localidades por la
-  // del archivo nuevo (las demás localidades no se tocan)
-  importar: async (file, localidades) => {
+  // Reemplaza la información de sobres anterior de esa combinación exacta
+  // de localidades + sección por la del archivo nuevo (las demás
+  // localidades, y las demás secciones de la misma localidad, no se
+  // tocan). "seccion" es opcional: sirve para localidades divididas en
+  // varias tandas físicas independientes (p. ej. FANZONE 1, 2, 3, 4...).
+  importar: async (file, localidades, seccion) => {
     const formData = new FormData();
     formData.append('csv', file);
     localidades.forEach(loc => formData.append('localidades', loc));
+    if (seccion) formData.append('seccion', seccion);
     const response = await api.post('/sobres/import', formData, {
       headers: { 'Content-Type': undefined },
       timeout: 5 * 60 * 1000

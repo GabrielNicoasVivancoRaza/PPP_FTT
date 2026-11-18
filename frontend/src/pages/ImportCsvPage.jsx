@@ -24,6 +24,10 @@ const ImportCsvPage = () => {
   // puede marcar más de una a la vez para el mismo archivo.
   const [archivoSobres, setArchivoSobres] = useState(null);
   const [localidadesSobresSeleccionadas, setLocalidadesSobresSeleccionadas] = useState([]);
+  // Sub-división física opcional: para localidades divididas en varias
+  // tandas independientes (p. ej. FANZONE 1, 2, 3, 4...), así cada sección
+  // reemplaza solo su propia tanda sin pisar las demás
+  const [seccionSobres, setSeccionSobres] = useState('');
   const [localidadesDisponibles, setLocalidadesDisponibles] = useState([]);
   const [subiendoSobres, setSubiendoSobres] = useState(false);
   const [resumenSobres, setResumenSobres] = useState(null);
@@ -180,10 +184,11 @@ const ImportCsvPage = () => {
       return;
     }
 
-    const etiqueta = localidadesSobresSeleccionadas.join(' + ');
+    const seccion = seccionSobres.trim();
+    const etiqueta = localidadesSobresSeleccionadas.join(' + ') + (seccion ? ` (${seccion})` : '');
     const result = await Swal.fire({
       title: `¿Reemplazar los sobres de "${etiqueta}"?`,
-      text: `Esto borra la información de sobres cargada anteriormente para "${etiqueta}" y la reemplaza por la de este archivo. Las demás localidades no se tocan.`,
+      text: `Esto borra la información de sobres cargada anteriormente para "${etiqueta}" y la reemplaza por la de este archivo. ${seccion ? 'Las demás secciones de esta localidad no se tocan.' : 'Las demás localidades no se tocan.'}`,
       icon: 'warning',
       showCancelButton: true,
       confirmButtonText: 'Sí, reemplazar',
@@ -195,10 +200,11 @@ const ImportCsvPage = () => {
 
     try {
       setSubiendoSobres(true);
-      const response = await sobresService.importar(archivoSobres, localidadesSobresSeleccionadas);
+      const response = await sobresService.importar(archivoSobres, localidadesSobresSeleccionadas, seccion);
       if (response.success) {
         setArchivoSobres(null);
         setLocalidadesSobresSeleccionadas([]);
+        setSeccionSobres('');
         if (inputSobresRef.current) inputSobresRef.current.value = '';
         Swal.fire({ title: 'Sobres actualizados', text: response.message, icon: 'success' });
         cargarResumenSobres();
@@ -398,6 +404,24 @@ const ImportCsvPage = () => {
                   </small>
                 </div>
                 <div className="mb-3">
+                  <label className="form-label" htmlFor="seccion-sobres">Sección (opcional)</label>
+                  <input
+                    id="seccion-sobres"
+                    type="text"
+                    className="form-control"
+                    placeholder="Ej: FANZONE 1"
+                    value={seccionSobres}
+                    onChange={(e) => setSeccionSobres(e.target.value)}
+                    disabled={subiendoSobres}
+                  />
+                  <small className="form-text text-muted">
+                    Solo si esta localidad está dividida en varias tandas físicas independientes
+                    (p. ej. FANZONE 1, 2, 3, 4). Cada sección reemplaza únicamente su propia tanda,
+                    sin afectar a las demás secciones de la misma localidad. Al canjear se busca en
+                    todas las secciones a la vez.
+                  </small>
+                </div>
+                <div className="mb-3">
                   <input
                     ref={inputSobresRef}
                     type="file"
@@ -445,8 +469,9 @@ const ImportCsvPage = () => {
                     fila(s) cargadas en total, entre {resumenSobres.porGrupo.length} archivo(s) subido(s)
                   </p>
                   {resumenSobres.porGrupo.map(grupo => (
-                    <div key={grupo.localidades.join('+')} className="border rounded p-2 mb-2">
+                    <div key={grupo.localidades.join('+') + '|' + (grupo.seccion || '')} className="border rounded p-2 mb-2">
                       <strong>{grupo.localidades.join(' + ')}</strong>
+                      {grupo.seccion && <span className="badge bg-secondary ms-2">{grupo.seccion}</span>}
                       <ul className="list-unstyled mb-0 mt-1">
                         <li>
                           <span className="badge bg-primary me-2">{grupo.totalFilas}</span>

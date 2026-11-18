@@ -18,10 +18,22 @@ const { getEventCollectionName } = require('../config/collectionName');
 // zona con sobres distintos por nombre de ticket), así que un mismo archivo
 // de sobres se puede subir marcado con VARIAS localidades a la vez.
 //
+// Al revés también pasa: UNA sola localidad del ticket (p. ej. "FANZONE")
+// puede estar dividida físicamente en varias secciones armadas por
+// separado (FANZONE 1, 2, 3, 4...), cada una con su propia tanda de sobres
+// — pero el ticket no tiene ningún campo que diga en cuál sección está la
+// persona, solo sabemos su localidad general. Por eso "seccion" es un
+// sub-identificador opcional, aparte de "localidades": sirve para que las
+// tandas de cada sección convivan sin pisarse al subir una nueva (se
+// reemplaza por localidades+seccion, no solo por localidades), pero NO se
+// usa para filtrar al buscar — un ticket de "FANZONE" busca en TODAS las
+// secciones a la vez y se listan todos los sobres que matcheen.
+//
 // Se sube como CSV (ver sobresController.importarSobres), elige una o más
-// localidades por archivo. Cada importación reemplaza lo anterior SOLO de
-// las localidades elegidas — no afecta a las demás — porque el
-// reordenamiento de sobres puede cambiar de una tanda a otra.
+// localidades (y opcionalmente una sección) por archivo. Cada importación
+// reemplaza lo anterior SOLO de esa combinación localidades+sección — no
+// afecta a las demás — porque el reordenamiento de sobres puede cambiar de
+// una tanda a otra.
 const sobreSchema = new mongoose.Schema({
   // Localidad(es) del ticket (campo "Ticket"/"Seat" del CSV de SquadUp) a
   // las que corresponde esta tanda de sobres. Un ticket matchea si SU
@@ -34,6 +46,13 @@ const sobreSchema = new mongoose.Schema({
       message: 'Debe tener al menos una localidad'
     },
     index: true
+  },
+  // Sub-división física opcional (ver comentario arriba). Vacío por
+  // defecto para localidades que no están seccionadas (AREA, VIP, etc.)
+  seccion: {
+    type: String,
+    trim: true,
+    default: ''
   },
   nombre: {
     type: String,
